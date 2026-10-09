@@ -1,0 +1,142 @@
+# ── Who you are ───────────────────────────────────────────────────────────────
+candidate:
+  name: "Zoe"
+  email: "you@example.com"          # where the agent mails results
+  phone: ""
+  linkedin: ""
+  location: "Covina, CA"
+  target_titles:
+    - "Senior Product Manager"
+    - "Principal Product Manager"
+    - "Product Manager, AI"
+    - "Product Manager, Developer Experience"
+    - "Group Product Manager"
+
+# ── What to search for ────────────────────────────────────────────────────────
+search:
+  keywords:
+    - "senior product manager AI"
+    - "product manager machine learning platform"
+    - "product manager developer tools"
+    - "principal product manager infrastructure"
+  locations:
+    - "Los Angeles, CA"
+    - "Remote"
+  country: "us"                      # Adzuna country code
+  max_days_old: 3                    # only postings newer than this
+  max_jobs_per_run: 40               # how many survive the title filter and get screened
+  min_score_to_list: 60              # 0-100; screened postings at/above this (and with
+                                     # no blocker) go in out/<date>/matches.md
+  min_score_to_generate: 78          # 0-100; below this, no docs are generated
+  max_packets_per_run: 3             # hard ceiling on full packets built per run.
+                                     # THE cost control: ~3/day ≈ $10–15/month
+
+  # Free title prefilter, run before any model call. Scores each title against
+  # candidate.target_titles. Raise toward 60 if noise still gets through; drop
+  # toward 35 if real roles are being cut. Run with -v to see what it dropped.
+  title_match_floor: 45
+
+  # ── Pay ─────────────────────────────────────────────────────────────────────
+  # Judged on the TOP of a stated band, so $160k–$200k clears a $180k floor.
+  min_salary: 180000                 # annual; 0 disables the filter
+  salary_unknown: keep               # keep | drop — most postings state no pay,
+                                     # so "drop" will discard the majority
+  trust_estimated_salary: false      # treat aggregator-modelled bands as real?
+
+# ── Screening: how each surviving posting's description is judged ─────────────
+screen:
+  mode: rules        # rules  — free if/then checks against `qualifications` below
+                     # haiku  — Haiku scores fit (pennies/run; needs base_resume.md)
+                     # hybrid — rules first, Haiku only on postings with no blocker
+  haiku_effort: low
+  research_effort: medium            # Opus effort for stage 3
+  generate_effort: high              # Opus effort for stage 4
+
+# Used by the rule screen. Every check is skipped while its field is empty/0,
+# so fill these in — an empty block passes everything on title alone.
+qualifications:
+  years_experience: 0                # your relevant years; 0 = don't check
+  stretch_years: 2                   # still list roles asking up to this many more
+  degree: ""                         # highest you hold: none | bachelor | master | mba | phd
+  # Evidence you match: terms from your actual experience. More of these in a
+  # description = higher score. Edit to match base_resume.md.
+  skills:
+    - "machine learning"
+    - "ml platform"
+    - "ai"
+    - "llm"
+    - "developer experience"
+    - "developer tools"
+    - "infrastructure"
+    - "platform"
+    - "roadmap"
+    - "prd"
+    - "cross-functional"
+    - "customer interviews"
+    - "documentation"
+  skills_for_full_marks: 5           # this many hits = full description score
+  min_skill_hits: 1                  # fewer than this = blocked
+  dealbreakers:                      # phrase anywhere in the description = blocked
+    - "security clearance"
+    - "ts/sci"
+    - "active clearance"
+
+# ── Where to search ───────────────────────────────────────────────────────────
+# Toggle sources on/off. See README §2 for why LinkedIn/Indeed work this way.
+sources:
+  adzuna: true                       # free tier, ~1000 calls/mo
+  google_jobs: true                  # SerpApi — indexes LinkedIn + Indeed postings
+  ats_boards: true                   # direct company boards, free, no key
+  linkedin_alert_email: false        # parse LinkedIn job-alert emails from your inbox
+
+# Direct ATS boards — the highest-signal, zero-cost source.
+# Find the token in the board URL: boards.greenhouse.io/<token>
+# Confirmed responding: greenhouse anthropic/databricks/stripe, lever spotify,
+# ashby ramp. Run `python check_boards.py figma netflix openai` before adding
+# those back — they weren't in the confirmed set.
+ats:
+  greenhouse:
+    - anthropic
+    - databricks
+    - stripe
+  lever:
+    - spotify
+  ashby:
+    - ramp
+
+# ── Hard filters applied before any LLM call (saves money) ───────────────────
+filters:
+  exclude_title_terms:               # whole words: "intern" won't drop "Internal Tools"
+    - "intern"
+    - "contract"
+    - "associate product manager"
+  exclude_companies:
+    - "Some Staffing Agency LLC"
+  require_terms: []                  # if set, title must contain one of these (whole words)
+  # ATS boards list every office worldwide. Keep only postings whose location
+  # names one of search.locations (city part) or one of these. Aggregators are
+  # already searched per location, so this applies to ATS boards only.
+  ats_location_filter: true
+  nearby_locations:
+    - "santa monica"
+    - "pasadena"
+    - "irvine"
+    - "culver city"
+    - "burbank"
+    - "el segundo"
+  # Domain words that nudge a title up, but only once it's already a plausible
+  # function match. "AI" won't rescue "Data Center Architect".
+  boost_terms:
+    - "AI"
+    - "machine learning"
+    - "platform"
+    - "developer"
+    - "infrastructure"
+
+# ── Model routing ─────────────────────────────────────────────────────────────
+models:
+  screen: "claude-haiku-5-5"            # only used in haiku/hybrid mode
+  research: "claude-opus-5-5"           # company research w/ web search
+  generate: "claude-opus-5-5"           # resume + cover letter via Skills
+
+state_retention_days: 120               # forget non-packet postings after this

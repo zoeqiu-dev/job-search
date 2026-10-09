@@ -1,0 +1,6 @@
+anthropic>=1.12,<2     # Skills + Files APIs are on the stable client from 1.x
+requests>=2.31
+PyYAML>=6.0
+
+# dev
+pytest>=8              # tests/ — titles, salary parser, filters, rule screen, pipeline

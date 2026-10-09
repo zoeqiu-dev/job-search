@@ -1,0 +1,12 @@
+# Secrets and personal data — never commit
+.env
+base_resume.md
+state.db
+out/
+# Your skill contains manager feedback and real metrics. It's uploaded to the
+# Skills API by setup_skill.py; it doesn't need to live in git.
+skill_bundle/*/
+
+__pycache__/
+*.pyc
+.pytest_cache/

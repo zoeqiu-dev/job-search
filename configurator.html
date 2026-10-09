@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Job agent — search setup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;450;500;600&family=IBM+Plex+Serif:ital,wght@0,500;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#EDEFEA; --panel:#F6F7F3; --ink:#16262B; --ink-soft:#5A6B6F;
+  --rule:#CBD2CD; --rule-firm:#A9B4AE;
+  --signal:#D9A21B; --signal-deep:#A87A0C;
+  --sea:#2E6F5E; --alarm:#9C3B2E;
+  --code-bg:#12201F; --code-ink:#DCE5DE; --code-dim:#6F8480; --code-key:#8FB9A8;
+  --r:3px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--paper); color:var(--ink);
+  font:450 15px/1.55 "IBM Plex Sans",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ── shell ─────────────────────────────────────────────────────── */
+.shell{max-width:1380px;margin:0 auto;padding:0 28px 96px}
+header.masthead{padding:44px 0 26px;border-bottom:1.5px solid var(--ink)}
+.masthead h1{
+  font:500 40px/1.05 "IBM Plex Serif",Georgia,serif;
+  margin:0 0 8px; letter-spacing:-.017em;
+}
+.masthead h1 em{font-style:italic;font-weight:400;color:var(--signal-deep)}
+.masthead p{margin:0;max-width:60ch;color:var(--ink-soft);font-size:14.5px}
+
+.split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,460px);gap:44px;align-items:start}
+
+/* ── form ──────────────────────────────────────────────────────── */
+section.block{padding:30px 0;border-bottom:1px solid var(--rule)}
+section.block:last-of-type{border-bottom:0}
+.eyebrow{
+  font:600 10.5px/1 "IBM Plex Mono",monospace;
+  letter-spacing:.15em;text-transform:uppercase;color:var(--signal-deep);
+  display:block;margin-bottom:9px;
+}
+.block h2{font:500 21px/1.2 "IBM Plex Serif",Georgia,serif;margin:0 0 5px;letter-spacing:-.01em}
+.hint{margin:0 0 18px;color:var(--ink-soft);font-size:13.5px;max-width:64ch}
+.hint code{font:500 12.5px "IBM Plex Mono",monospace;background:#E2E6DF;padding:1px 5px;border-radius:2px}
+
+.field{margin-bottom:19px}
+.field:last-child{margin-bottom:0}
+label.lab{display:block;font-weight:600;font-size:12.5px;margin-bottom:6px;letter-spacing:.005em}
+label.lab .sub{font-weight:450;color:var(--ink-soft);letter-spacing:0}
+
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px}
+
+input[type=text],input[type=email],input[type=number],select{
+  width:100%;padding:9px 11px;background:var(--panel);
+  border:1px solid var(--rule-firm);border-radius:var(--r);
+  font:400 14px "IBM Plex Mono",monospace;color:var(--ink);
+}
+input:focus-visible,select:focus-visible,.tagbox:focus-within{
+  outline:2px solid var(--signal);outline-offset:1px;border-color:var(--signal-deep);
+}
+input::placeholder{color:#9AA8A4}
+
+/* ── tag input ─────────────────────────────────────────────────── */
+.tagbox{
+  display:flex;flex-wrap:wrap;gap:6px;padding:7px;min-height:44px;
+  background:var(--panel);border:1px solid var(--rule-firm);border-radius:var(--r);
+  cursor:text;
+}
+.chip{
+  display:inline-flex;align-items:center;gap:7px;
+  background:var(--ink);color:var(--paper);
+  padding:4px 6px 4px 10px;border-radius:2px;
+  font:400 12.5px "IBM Plex Mono",monospace;max-width:100%;
+}
+.chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip button{
+  border:0;background:transparent;color:#9FB0AC;cursor:pointer;
+  font:500 14px/1 "IBM Plex Mono",monospace;padding:0 2px;border-radius:2px;
+}
+.chip button:hover{color:var(--signal)}
+.chip button:focus-visible{outline:2px solid var(--signal);color:var(--signal)}
+.tagbox input{
+  flex:1;min-width:130px;border:0;background:transparent;padding:4px 3px;
+  font:400 13.5px "IBM Plex Mono",monospace;color:var(--ink);
+}
+.tagbox input:focus{outline:0}
+.presets{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}
+.presets button{
+  border:1px dashed var(--rule-firm);background:transparent;color:var(--ink-soft);
+  padding:3px 9px;border-radius:2px;cursor:pointer;
+  font:400 12px "IBM Plex Mono",monospace;
+}
+.presets button:hover{border-style:solid;border-color:var(--ink);color:var(--ink)}
+
+/* ── salary ────────────────────────────────────────────────────── */
+.pay{
+  background:var(--panel);border:1px solid var(--rule-firm);
+  border-left:3px solid var(--signal);border-radius:var(--r);padding:20px;
+}
+.payread{display:flex;align-items:baseline;gap:11px;flex-wrap:wrap;margin-bottom:15px}
+.payread .amt{
+  font:500 40px/1 "IBM Plex Mono",monospace;letter-spacing:-.03em;
+  font-variant-numeric:tabular-nums;
+}
+.payread .unit{font-size:13px;color:var(--ink-soft)}
+input[type=range]{
+  -webkit-appearance:none;appearance:none;width:100%;height:22px;background:transparent;cursor:pointer;
+}
+input[type=range]::-webkit-slider-runnable-track{height:3px;background:var(--rule-firm);border-radius:2px}
+input[type=range]::-moz-range-track{height:3px;background:var(--rule-firm);border-radius:2px}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:17px;height:17px;border-radius:50%;
+  background:var(--signal);border:2.5px solid var(--ink);margin-top:-7px;
+}
+input[type=range]::-moz-range-thumb{
+  width:17px;height:17px;border-radius:50%;background:var(--signal);border:2.5px solid var(--ink);
+}
+input[type=range]:focus-visible{outline:2px solid var(--signal);outline-offset:3px;border-radius:4px}
+.scale{
+  display:flex;justify-content:space-between;
+  font:400 11px "IBM Plex Mono",monospace;color:var(--ink-soft);margin-top:-2px;
+}
+
+.choice{display:flex;flex-direction:column;gap:8px;margin-top:16px}
+.opt{
+  display:flex;gap:10px;align-items:flex-start;padding:10px 12px;
+  border:1px solid var(--rule);border-radius:var(--r);cursor:pointer;background:#fff;
+}
+.opt:hover{border-color:var(--rule-firm)}
+.opt input{margin:3px 0 0;accent-color:var(--signal-deep);flex:none}
+.opt strong{display:block;font-size:13px;font-weight:600}
+.opt small{display:block;color:var(--ink-soft);font-size:12.5px;line-height:1.45}
+.opt:has(input:checked){border-color:var(--ink);background:#FCFDFA;box-shadow:inset 3px 0 0 var(--signal)}
+.opt:has(input:focus-visible){outline:2px solid var(--signal);outline-offset:1px}
+
+.warn{
+  display:none;margin-top:12px;padding:9px 12px;border-radius:var(--r);
+  background:#FBF0E8;border:1px solid #E4C4A8;color:#7A3F22;font-size:12.5px;line-height:1.45;
+}
+.warn.on{display:block}
+
+/* ── toggles ───────────────────────────────────────────────────── */
+.toggles{display:grid;gap:8px}
+.tg{display:flex;gap:10px;align-items:flex-start;padding:9px 11px;border:1px solid var(--rule);border-radius:var(--r);background:#fff;cursor:pointer}
+.tg input{margin:3px 0 0;accent-color:var(--sea);flex:none}
+.tg strong{display:block;font-size:13px;font-weight:600}
+.tg small{color:var(--ink-soft);font-size:12.5px;line-height:1.45}
+.tg:has(input:focus-visible){outline:2px solid var(--signal);outline-offset:1px}
+
+/* ── yaml pane ─────────────────────────────────────────────────── */
+.pane{position:sticky;top:22px}
+.panehead{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  background:var(--ink);color:var(--paper);padding:9px 13px;border-radius:var(--r) var(--r) 0 0;
+}
+.panehead .fname{font:500 12.5px "IBM Plex Mono",monospace;letter-spacing:.02em}
+.paneact{display:flex;gap:6px}
+.paneact button{
+  border:1px solid #3D5054;background:transparent;color:var(--paper);
+  padding:4px 10px;border-radius:2px;cursor:pointer;
+  font:500 11.5px "IBM Plex Mono",monospace;
+}
+.paneact button:hover{background:var(--signal);border-color:var(--signal);color:var(--ink)}
+.paneact button:focus-visible{outline:2px solid var(--signal);outline-offset:1px}
+pre.yaml{
+  margin:0;background:var(--code-bg);color:var(--code-ink);
+  padding:15px 0;border-radius:0 0 var(--r) var(--r);
+  font:400 12.4px/1.62 "IBM Plex Mono",monospace;
+  max-height:min(70vh,760px);overflow:auto;white-space:pre;
+}
+pre.yaml .ln{display:block;padding:0 15px}
+pre.yaml .k{color:var(--code-key)}
+pre.yaml .c{color:var(--code-dim);font-style:italic}
+pre.yaml .v{color:#E8CE86}
+@keyframes land{from{background:rgba(217,162,27,.32)}to{background:transparent}}
+pre.yaml .ln.fresh{animation:land 1s ease-out}
+.panefoot{margin-top:9px;font-size:12px;color:var(--ink-soft);line-height:1.5}
+.panefoot b{color:var(--ink);font-weight:600}
+
+.toast{
+  position:fixed;left:50%;bottom:26px;transform:translate(-50%,14px);
+  background:var(--ink);color:var(--paper);padding:9px 17px;border-radius:2px;
+  font:500 13px "IBM Plex Mono",monospace;opacity:0;pointer-events:none;transition:.22s;z-index:9;
+}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+
+@media(max-width:1040px){
+  .split{grid-template-columns:1fr;gap:0}
+  .pane{position:static;margin-top:34px;padding-top:30px;border-top:1.5px solid var(--ink)}
+  pre.yaml{max-height:440px}
+}
+@media(max-width:560px){
+  .shell{padding:0 17px 70px}
+  .masthead h1{font-size:31px}
+  .payread .amt{font-size:33px}
+}
+@media(prefers-reduced-motion:reduce){
+  *{animation-duration:.001ms!important;transition-duration:.001ms!important}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<header class="masthead">
+  <h1>What should the agent <em>look for?</em></h1>
+  <p>Set your titles, locations, and pay floor. The config file writes itself as you go — copy it over <code style="font:500 12.5px 'IBM Plex Mono',monospace">config.yaml</code> in the repo when you're done.</p>
+</header>
+
+<div class="split">
+  <main>
+
+    <section class="block">
+      <span class="eyebrow">Titles</span>
+      <h2>Roles you want</h2>
+      <p class="hint">Used to judge whether a posting is at your level. Add the titles you'd accept, including ones you'd stretch for — the screener scores against them rather than matching exactly.</p>
+      <div class="field">
+        <label class="lab" for="t-titles">Target job titles</label>
+        <div class="tagbox" data-tags="titles"><input id="t-titles" placeholder="Type a title, press Enter"></div>
+        <div class="presets" data-presets="titles"></div>
+      </div>
+      <div class="field">
+        <label class="lab" for="t-keywords">Search phrases <span class="sub">— what gets sent to the job boards</span></label>
+        <div class="tagbox" data-tags="keywords"><input id="t-keywords" placeholder="e.g. product manager machine learning"></div>
+        <p class="hint" style="margin:8px 0 0">Different from titles: these are queries. Three to six is the sweet spot — each one multiplies your API calls, and past six they mostly return the same postings.</p>
+      </div>
+    </section>
+
+    <section class="block">
+      <span class="eyebrow">Where</span>
+      <h2>Locations</h2>
+      <p class="hint">Add <code>Remote</code> as its own entry to pull remote-flagged roles. Metro names work better than neighbourhoods.</p>
+      <div class="field">
+        <div class="tagbox" data-tags="locations"><input id="t-locations" placeholder="e.g. Los Angeles, CA"></div>
+        <div class="presets" data-presets="locations"></div>
+      </div>
+      <div class="field">
+        <label class="lab" for="t-nearby">Nearby places <span class="sub">— company boards list every office worldwide; these also count as yours</span></label>
+        <div class="tagbox" data-tags="nearby"><input id="t-nearby" placeholder="e.g. Santa Monica"></div>
+      </div>
+      <div class="row" style="margin-top:18px">
+        <div class="field">
+          <label class="lab" for="f-country">Country <span class="sub">— Adzuna code</span></label>
+          <select id="f-country">
+            <option value="us" selected>us — United States</option>
+            <option value="gb">gb — United Kingdom</option>
+            <option value="ca">ca — Canada</option>
+            <option value="au">au — Australia</option>
+            <option value="de">de — Germany</option>
+            <option value="nl">nl — Netherlands</option>
+            <option value="sg">sg — Singapore</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="lab" for="f-home">Your home base</label>
+          <input type="text" id="f-home" value="Covina, CA">
+        </div>
+      </div>
+    </section>
+
+    <section class="block">
+      <span class="eyebrow">Pay</span>
+      <h2>Salary floor</h2>
+      <p class="hint">Judged on the <b>top</b> of a stated band, so a posting advertising $160k–$200k still clears a $180k floor — that's a range you can negotiate inside.</p>
+      <div class="pay">
+        <div class="payread">
+          <span class="amt" id="pay-read">$180,000</span>
+          <span class="unit">base, annual</span>
+        </div>
+        <input type="range" id="f-salary" min="0" max="450000" step="5000" value="180000">
+        <div class="scale"><span>off</span><span>$225k</span><span>$450k</span></div>
+
+        <div class="choice">
+          <label class="opt">
+            <input type="radio" name="unknown" value="keep" checked>
+            <span><strong>Keep postings that don't state pay</strong>
+            <small>Most don't. The screener guesses from seniority and company, and flags anything that looks low.</small></span>
+          </label>
+          <label class="opt">
+            <input type="radio" name="unknown" value="drop">
+            <span><strong>Drop postings that don't state pay</strong>
+            <small>Cuts the majority of real openings. Reasonable only in states with pay-transparency laws.</small></span>
+          </label>
+        </div>
+
+        <label class="opt" style="margin-top:8px">
+          <input type="checkbox" id="f-trust">
+          <span><strong>Trust estimated bands</strong>
+          <small>Aggregators model a band when the employer states none. Filtering on those numbers drops real jobs over a guess.</small></span>
+        </label>
+
+        <div class="warn" id="pay-warn"></div>
+      </div>
+    </section>
+
+    <section class="block">
+      <span class="eyebrow">Exclusions</span>
+      <h2>What to throw away</h2>
+      <p class="hint">The cheapest filter you have — applied before any model call, so everything here is free.</p>
+      <div class="field">
+        <label class="lab" for="t-extitle">Titles containing any of</label>
+        <div class="tagbox" data-tags="exTitles"><input id="t-extitle" placeholder="e.g. intern"></div>
+        <div class="presets" data-presets="exTitles"></div>
+      </div>
+      <div class="field">
+        <label class="lab" for="t-exco">Companies to skip <span class="sub">— agencies, past employers, anywhere you've been rejected</span></label>
+        <div class="tagbox" data-tags="exCompanies"><input id="t-exco" placeholder="Company name"></div>
+      </div>
+    </section>
+
+    <section class="block">
+      <span class="eyebrow">Target companies</span>
+      <h2>Boards to watch directly</h2>
+      <p class="hint">The highest-signal source in the pipeline: free, no key, full descriptions, and roles land here before they reach aggregators. The token is the last part of the board URL — <code>job-boards.greenhouse.io/<b>stripe</b></code>.</p>
+      <div class="field">
+        <label class="lab" for="t-gh">Greenhouse</label>
+        <div class="tagbox" data-tags="greenhouse"><input id="t-gh" placeholder="stripe"></div>
+      </div>
+      <div class="field">
+        <label class="lab" for="t-lv">Lever</label>
+        <div class="tagbox" data-tags="lever"><input id="t-lv" placeholder="netflix"></div>
+      </div>
+      <div class="field">
+        <label class="lab" for="t-as">Ashby</label>
+        <div class="tagbox" data-tags="ashby"><input id="t-as" placeholder="ramp"></div>
+      </div>
+    </section>
+
+    <section class="block">
+      <span class="eyebrow">Screening</span>
+      <h2>Do you match the description?</h2>
+      <p class="hint">After the title filter, each posting's description is checked. <b>Rules</b> is free: plain if/then checks against what you enter here. Any check left blank is skipped.</p>
+      <div class="choice" style="margin:0 0 18px">
+        <label class="opt"><input type="radio" name="mode" value="rules" checked><span><strong>Rules — free</strong><small>Dealbreakers, years asked for, degree asked for, and how many of your skills the description names.</small></span></label>
+        <label class="opt"><input type="radio" name="mode" value="hybrid"><span><strong>Hybrid</strong><small>Rules first; Haiku scores only the postings with no hard blocker.</small></span></label>
+        <label class="opt"><input type="radio" name="mode" value="haiku"><span><strong>Haiku</strong><small>Haiku reads every surviving posting. Pennies per run.</small></span></label>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label class="lab" for="f-years">Your years of experience <span class="sub">— 0 skips the check</span></label>
+          <input type="number" id="f-years" min="0" max="40" value="0">
+        </div>
+        <div class="field">
+          <label class="lab" for="f-stretch">Stretch <span class="sub">— extra years you'd still apply for</span></label>
+          <input type="number" id="f-stretch" min="0" max="10" value="2">
+        </div>
+        <div class="field">
+          <label class="lab" for="f-degree">Highest degree</label>
+          <select id="f-degree">
+            <option value="">— skip degree check —</option>
+            <option value="none">none</option>
+            <option value="bachelor">bachelor</option>
+            <option value="master">master</option>
+            <option value="mba">mba</option>
+            <option value="phd">phd</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label class="lab" for="t-skills">Your skills <span class="sub">— the more of these a description names, the higher it scores</span></label>
+        <div class="tagbox" data-tags="skills"><input id="t-skills" placeholder="e.g. ml platform"></div>
+      </div>
+      <div class="field">
+        <label class="lab" for="t-deal">Dealbreakers <span class="sub">— phrase anywhere in the description rules it out</span></label>
+        <div class="tagbox" data-tags="dealbreakers"><input id="t-deal" placeholder="e.g. security clearance"></div>
+      </div>
+      <div class="field">
+        <label class="lab" for="t-boost">Boost terms <span class="sub">— nudge a title up, only once it's already a PM title</span></label>
+        <div class="tagbox" data-tags="boosts"><input id="t-boost" placeholder="e.g. AI"></div>
+      </div>
+    </section>
+
+    <section class="block">
+      <span class="eyebrow">Sources</span>
+      <h2>Where to search</h2>
+      <div class="toggles">
+        <label class="tg"><input type="checkbox" id="s-ats" checked><span><strong>ATS boards</strong><small>Free, no key. Your list above.</small></span></label>
+        <label class="tg"><input type="checkbox" id="s-adzuna" checked><span><strong>Adzuna</strong><small>Aggregator. Free tier, ~1,000 calls a month.</small></span></label>
+        <label class="tg"><input type="checkbox" id="s-google" checked><span><strong>Google Jobs</strong><small>Reaches LinkedIn and Indeed postings. Needs a SerpApi key.</small></span></label>
+        <label class="tg"><input type="checkbox" id="s-alerts"><span><strong>LinkedIn alert emails</strong><small>Reads alerts sent to your own inbox over IMAP. No job descriptions, so those get screened on thin context.</small></span></label>
+      </div>
+    </section>
+
+    <section class="block">
+      <span class="eyebrow">Limits</span>
+      <h2>Thresholds and ceilings</h2>
+      <p class="hint">These control what it costs. <code>max_packets_per_run</code> is the one that matters most.</p>
+      <div class="row">
+        <div class="field">
+          <label class="lab" for="f-score">Min match score to write a packet <span class="sub">— <b id="score-read">78</b>/100</span></label>
+          <input type="range" id="f-score" min="50" max="95" step="1" value="78">
+          <div class="scale"><span>50 · loose</span><span>95 · strict</span></div>
+        </div>
+        <div class="field">
+          <label class="lab" for="f-packets">Max packets per run</label>
+          <input type="number" id="f-packets" min="1" max="20" value="3">
+        </div>
+        <div class="field">
+          <label class="lab" for="f-days">Only postings newer than <span class="sub">— days</span></label>
+          <input type="number" id="f-days" min="1" max="30" value="3">
+        </div>
+        <div class="field">
+          <label class="lab" for="f-maxjobs">Max postings screened per run</label>
+          <input type="number" id="f-maxjobs" min="5" max="200" value="40">
+        </div>
+        <div class="field">
+          <label class="lab" for="f-list">Min score to list the URL <span class="sub">— <b id="list-read">60</b>/100</span></label>
+          <input type="range" id="f-list" min="30" max="95" step="1" value="60">
+        </div>
+        <div class="field">
+          <label class="lab" for="f-floor">Title match floor <span class="sub">— <b id="floor-read">45</b>/100</span></label>
+          <input type="range" id="f-floor" min="20" max="80" step="1" value="45">
+          <div class="scale"><span>35 · lets more through</span><span>60 · stricter</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block">
+      <span class="eyebrow">You</span>
+      <h2>Where the packets go</h2>
+      <div class="row">
+        <div class="field">
+          <label class="lab" for="f-name">Name</label>
+          <input type="text" id="f-name" value="Zoe">
+        </div>
+        <div class="field">
+          <label class="lab" for="f-email">Email</label>
+          <input type="email" id="f-email" placeholder="you@example.com">
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <aside class="pane">
+    <div class="panehead">
+      <span class="fname">config.yaml</span>
+      <span class="paneact">
+        <button id="btn-copy" type="button">Copy</button>
+        <button id="btn-dl" type="button">Download</button>
+      </span>
+    </div>
+    <pre class="yaml" id="out" aria-live="polite" aria-label="Generated configuration"></pre>
+    <p class="panefoot">Save this over <b>config.yaml</b> in the repo root, then run <b>python -m agent.run --dry-run</b> to see what it finds before spending anything.</p>
+  </aside>
+</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+const state = {
+  titles:["Senior Product Manager","Principal Product Manager","Product Manager, AI","Group Product Manager"],
+  keywords:["senior product manager AI","product manager machine learning platform","product manager developer tools"],
+  locations:["Los Angeles, CA","Remote"],
+  exTitles:["intern","contract","associate product manager"],
+  exCompanies:[],
+  greenhouse:["anthropic","databricks","stripe"],
+  lever:["spotify"],
+  ashby:["ramp"],
+  nearby:["santa monica","pasadena","irvine","culver city","burbank","el segundo"],
+  skills:["machine learning","ml platform","ai","llm","developer experience","developer tools","infrastructure","platform","roadmap","prd","cross-functional","customer interviews","documentation"],
+  dealbreakers:["security clearance","ts/sci","active clearance"],
+  boosts:["AI","machine learning","platform","developer","infrastructure"]
+};
+
+const PRESETS = {
+  titles:["Director of Product","Staff Product Manager","Product Lead","Head of Product"],
+  locations:["Remote","San Francisco, CA","New York, NY","Seattle, WA","Los Angeles, CA","Austin, TX"],
+  exTitles:["intern","junior","contract","staffing","associate product manager","unpaid"]
+};
+
+/* ── tag inputs ─────────────────────────────────────────────────── */
+function renderTags(box){
+  const key = box.dataset.tags, input = box.querySelector("input");
+  box.querySelectorAll(".chip").forEach(c=>c.remove());
+  state[key].forEach((val,i)=>{
+    const chip = document.createElement("span");
+    chip.className = "chip";
+    const label = document.createElement("span");
+    label.textContent = val;                 // textContent, never innerHTML
+    const x = document.createElement("button");
+    x.type = "button"; x.textContent = "\u00d7";
+    x.setAttribute("aria-label", "Remove " + val);
+    x.onclick = e => { e.stopPropagation(); state[key].splice(i,1); renderTags(box); paint(key); };
+    chip.append(label, x);
+    box.insertBefore(chip, input);
+  });
+  renderPresets(key);
+}
+
+function renderPresets(key){
+  const host = document.querySelector(`[data-presets="${key}"]`);
+  if(!host) return;
+  host.textContent = "";
+  (PRESETS[key]||[]).filter(p=>!state[key].includes(p)).forEach(p=>{
+    const b = document.createElement("button");
+    b.type="button"; b.textContent = "+ " + p;
+    b.onclick = ()=>{ state[key].push(p); renderTags(document.querySelector(`[data-tags="${key}"]`)); paint(key); };
+    host.appendChild(b);
+  });
+}
+
+// Enter is the only delimiter. Commas are content here: "Product Manager, AI"
+// and "Los Angeles, CA" both need to survive as single entries.
+function add(key, raw, box){
+  const v = raw.trim();
+  if(v && !state[key].some(e => e.toLowerCase() === v.toLowerCase())) state[key].push(v);
+  renderTags(box); paint(key);
+}
+
+document.querySelectorAll(".tagbox").forEach(box=>{
+  const key = box.dataset.tags, input = box.querySelector("input");
+  box.addEventListener("click", e=>{ if(e.target===box) input.focus(); });
+  input.addEventListener("keydown", e=>{
+    if(e.key==="Enter"){
+      e.preventDefault();
+      if(input.value.trim()){ add(key, input.value, box); input.value=""; }
+    } else if(e.key==="Backspace" && !input.value && state[key].length){
+      state[key].pop(); renderTags(box); paint(key);
+    }
+  });
+  input.addEventListener("blur", ()=>{ if(input.value.trim()){ add(key,input.value,box); input.value=""; } });
+  renderTags(box);
+});
+
+/* ── YAML emit ──────────────────────────────────────────────────── */
+const $ = id => document.getElementById(id);
+const money = n => "$" + Number(n).toLocaleString("en-US");
+
+function q(s){                                  // quote + escape for YAML
+  return '"' + String(s).replace(/\\/g,"\\\\").replace(/"/g,'\\"') + '"';
+}
+function list(arr, indent){
+  if(!arr.length) return [indent + "[]"];
+  return arr.map(v => indent + "- " + q(v));
+}
+
+function build(){
+  const sal = +$("f-salary").value;
+  const unknown = document.querySelector('input[name=unknown]:checked').value;
+  const L = [];
+  const push = (t="") => L.push(t);
+
+  push("# Written by configurator.html. Safe to hand-edit.");
+  push("");
+  push("candidate:");
+  push(`  name: ${q($("f-name").value || "Your Name")}`);
+  push(`  email: ${q($("f-email").value || "you@example.com")}   # packets go here`);
+  push(`  location: ${q($("f-home").value)}`);
+  push("  target_titles:");
+  list(state.titles, "    ").forEach(push);
+  push("");
+  push("search:");
+  push("  keywords:");
+  list(state.keywords, "    ").forEach(push);
+  push("  locations:");
+  list(state.locations, "    ").forEach(push);
+  push(`  country: ${q($("f-country").value)}`);
+  push(`  max_days_old: ${$("f-days").value}`);
+  push(`  max_jobs_per_run: ${$("f-maxjobs").value}`);
+  push(`  title_match_floor: ${$("f-floor").value}`);
+  push(`  min_score_to_list: ${$("f-list").value}`);
+  push(`  min_score_to_generate: ${$("f-score").value}`);
+  push(`  max_packets_per_run: ${$("f-packets").value}`);
+  push("");
+  push("  # Judged on the TOP of a band:");
+  push("  #   $160k-$200k clears a $180k floor.");
+  push(`  min_salary: ${sal}${sal===0 ? "   # 0 = filter off" : ""}`);
+  push(`  salary_unknown: ${unknown}`);
+  push(`  trust_estimated_salary: ${$("f-trust").checked}`);
+  push("");
+  push("screen:");
+  push(`  mode: ${document.querySelector('input[name=mode]:checked').value}`);
+  push("  haiku_effort: low");
+  push("  research_effort: medium");
+  push("  generate_effort: high");
+  push("");
+  push("qualifications:");
+  push(`  years_experience: ${+$("f-years").value || 0}`);
+  push(`  stretch_years: ${+$("f-stretch").value || 0}`);
+  push(`  degree: ${q($("f-degree").value)}`);
+  push("  skills:");
+  list(state.skills, "    ").forEach(push);
+  push("  skills_for_full_marks: 5");
+  push("  min_skill_hits: 1");
+  push("  dealbreakers:");
+  list(state.dealbreakers, "    ").forEach(push);
+  push("");
+  push("sources:");
+  push(`  adzuna: ${$("s-adzuna").checked}`);
+  push(`  google_jobs: ${$("s-google").checked}`);
+  push(`  ats_boards: ${$("s-ats").checked}`);
+  push(`  linkedin_alert_email: ${$("s-alerts").checked}`);
+  push("");
+  push("ats:");
+  push("  greenhouse:");
+  list(state.greenhouse, "    ").forEach(push);
+  push("  lever:");
+  list(state.lever, "    ").forEach(push);
+  push("  ashby:");
+  list(state.ashby, "    ").forEach(push);
+  push("");
+  push("filters:");
+  push("  exclude_title_terms:");
+  list(state.exTitles, "    ").forEach(push);
+  push("  exclude_companies:");
+  list(state.exCompanies, "    ").forEach(push);
+  push("  require_terms: []");
+  push("  ats_location_filter: true");
+  push("  nearby_locations:");
+  list(state.nearby, "    ").forEach(push);
+  push("  boost_terms:");
+  list(state.boosts, "    ").forEach(push);
+  push("");
+  push("models:");
+  push('  screen: "claude-haiku-5-5"');
+  push('  research: "claude-opus-5-5"');
+  push('  generate: "claude-opus-5-5"');
+  push("");
+  push("state_retention_days: 120");
+  return L;
+}
+
+/* ── render, flashing only the lines that actually changed ──────── */
+let prev = [];
+function paint(){
+  const lines = build();
+  const out = $("out");
+  out.textContent = "";
+  lines.forEach((line,i)=>{
+    const el = document.createElement("span");
+    el.className = "ln";
+    const m = line.match(/^(\s*)(#.*)$/);
+    if(m){
+      el.append(m[1]);
+      const c = document.createElement("span"); c.className="c"; c.textContent=m[2]; el.append(c);
+    } else {
+      const kv = line.match(/^(\s*-?\s*)([A-Za-z_]+)(:)(.*)$/);
+      if(kv){
+        el.append(kv[1]);
+        const k=document.createElement("span"); k.className="k"; k.textContent=kv[2]; el.append(k,kv[3]);
+        const rest = kv[4].match(/^(.*?)(\s+#.*)$/);
+        if(rest){
+          const v=document.createElement("span"); v.className="v"; v.textContent=rest[1]; el.append(v);
+          const c=document.createElement("span"); c.className="c"; c.textContent=rest[2]; el.append(c);
+        } else {
+          const v=document.createElement("span"); v.className="v"; v.textContent=kv[4]; el.append(v);
+        }
+      } else el.textContent = line || " ";
+    }
+    if(prev.length && prev[i] !== line) el.classList.add("fresh");
+    out.appendChild(el);
+  });
+  prev = lines;
+  $("pay-read").textContent = +$("f-salary").value === 0 ? "No floor" : money($("f-salary").value);
+  $("score-read").textContent = $("f-score").value;
+  $("list-read").textContent = $("f-list").value;
+  $("floor-read").textContent = $("f-floor").value;
+
+  const w = $("pay-warn"), drop = document.querySelector('input[name=unknown]:checked').value === "drop";
+  const sal = +$("f-salary").value;
+  if(drop && sal > 0){
+    w.className = "warn on";
+    w.textContent = "Most employers post no salary at all. With this on, any role not advertising "
+      + money(sal) + "+ is discarded before it's ever read — including ones that would have paid it.";
+  } else if(sal >= 300000){
+    w.className = "warn on";
+    w.textContent = "Above $300k very few postings state a band publicly. Expect thin results; the ATS boards are your best source at this level.";
+  } else w.className = "warn";
+
+  save();
+}
+
+document.querySelectorAll("input, select").forEach(el=>{
+  if(el.closest(".tagbox")) return;
+  el.addEventListener("input", paint);
+  el.addEventListener("change", paint);
+});
+
+/* ── copy / download ────────────────────────────────────────────── */
+function toast(msg){
+  const t = $("toast"); t.textContent = msg; t.className = "toast on";
+  clearTimeout(t._h); t._h = setTimeout(()=>{ t.className = "toast"; }, 1900);
+}
+$("btn-copy").onclick = async ()=>{
+  const text = build().join("\n") + "\n";
+  try{ await navigator.clipboard.writeText(text); toast("Copied config.yaml"); }
+  catch{
+    const ta = document.createElement("textarea");
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand("copy"); ta.remove(); toast("Copied config.yaml");
+  }
+};
+$("btn-dl").onclick = ()=>{
+  const blob = new Blob([build().join("\n") + "\n"], {type:"text/yaml"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "config.yaml";
+  a.click(); URL.revokeObjectURL(a.href);
+  toast("Downloaded config.yaml");
+};
+
+/* ── autosave, when the host provides storage ───────────────────── */
+const FIELDS = ["f-salary","f-score","f-packets","f-days","f-maxjobs","f-name","f-email","f-home","f-country",
+                "f-list","f-floor","f-years","f-stretch","f-degree"];
+const FLAGS  = ["f-trust","s-ats","s-adzuna","s-google","s-alerts"];
+let saveTimer;
+function save(){
+  if(!window.storage) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async ()=>{
+    const snap = {tags:state, vals:{}, flags:{},
+      unknown:document.querySelector('input[name=unknown]:checked').value,
+      mode:document.querySelector('input[name=mode]:checked').value};
+    FIELDS.forEach(f=>snap.vals[f]=$(f).value);
+    FLAGS.forEach(f=>snap.flags[f]=$(f).checked);
+    try{ await window.storage.set("jobagent:config", JSON.stringify(snap), false); }catch(e){}
+  }, 600);
+}
+async function restore(){
+  if(!window.storage) return;
+  try{
+    const r = await window.storage.get("jobagent:config", false);
+    if(!r) return;
+    const snap = JSON.parse(r.value);
+    Object.keys(state).forEach(k=>{ if(Array.isArray(snap.tags?.[k])) state[k] = snap.tags[k]; });
+    FIELDS.forEach(f=>{ if(snap.vals?.[f] !== undefined) $(f).value = snap.vals[f]; });
+    FLAGS.forEach(f=>{ if(snap.flags?.[f] !== undefined) $(f).checked = snap.flags[f]; });
+    if(snap.mode){
+      const m = document.querySelector(`input[name=mode][value="${snap.mode}"]`);
+      if(m) m.checked = true;
+    }
+    if(snap.unknown){
+      const r2 = document.querySelector(`input[name=unknown][value="${snap.unknown}"]`);
+      if(r2) r2.checked = true;
+    }
+    document.querySelectorAll(".tagbox").forEach(renderTags);
+  }catch(e){ /* no saved state, or storage unavailable — start fresh */ }
+}
+
+restore().then(paint);
+</script>
+</body>
+</html>
