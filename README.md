@@ -22,21 +22,32 @@ python -m agent.run --rescreen  # re-check postings already seen (after changing
   same for one run without touching `config.yaml`, and searches only those
   titles. Run once with `--rescreen` after a change, so postings screened
   under the old titles are looked at again.
-- **More postings:** `search.locations` is `California` + `Remote`, i.e. the
-  whole state. Each run prints queries × locations = API calls, since that
-  number is what eats a SerpApi quota.
-- **More companies:** `python check_boards.py --add figma notion …` tests each
-  token on Greenhouse, Lever and Ashby, shows how many openings are in
-  California, and adds only the ones that respond to `config.yaml`.
+- **Any company:** Adzuna and Google Jobs search every company hiring for your
+  titles in your areas; the ATS boards in `config.yaml` are an extra source on
+  top. Free tiers can't afford every title × area every day, so each run
+  spends at most `adzuna_calls_per_run` / `google_jobs_calls_per_run` and
+  rotates to the next batch next run (remembered in `state.db`). The run prints
+  how many runs a full cycle takes.
+- **Staffing agencies** are dropped: known agency names, names containing
+  "staffing"/"recruiting", and ads written "on behalf of our client". Add any
+  that slip through under `filters.extra_agencies`.
+- **More company boards:** `python check_boards.py --add figma notion …` tests
+  each token on Greenhouse, Lever and Ashby, shows how many openings are in
+  your areas, and adds only the ones that respond to `config.yaml`.
 
 ## Location
 
 The `location:` block is checked on every posting from every source. A
-posting passes if any of its offices is in California (`state: CA`), or, with
-`allow_remote: true`, if it's remote and open to the US. "Remote – New York"
-and "Remote – UK" are dropped, and so are postings with no location
-(`unknown: drop`). Postings that name only a city are matched against a
-built-in list of California cities; add missing towns under `extra_cities`.
+posting passes if any of its offices is in one of `regions` —
+`bay_area` (all nine counties) and `los_angeles` (LA County + Orange County) —
+or, with `allow_remote: true`, if it's remote and open to the US. Everything
+else is dropped: San Diego, Sacramento, a bare "California", "Remote – New
+York", "Remote – UK", and postings with no location (`unknown: drop`). City
+names shared with other places (Dublin, Newark, Glendale, Orange…) count only
+when the posting also says CA. Add missing towns under `extra_cities`.
+
+Searches use each area's `near` + `radius_km` from `search.locations`; the
+radius is wide on purpose, since the filter above makes the final call.
 
 ## 1. How it works
 
@@ -44,7 +55,7 @@ Four stages. Each is its own step — not one agent loop.
 
 | stage | what | cost |
 |---|---|---|
-| 1 collect | Adzuna, Google Jobs (SerpApi), public ATS boards, optional alert emails → hard filters (title terms, companies, salary, California location) → dedupe | free |
+| 1 collect | Adzuna, Google Jobs (SerpApi), public ATS boards, optional alert emails → hard filters (title terms, companies, agencies, salary, location) → dedupe | free |
 | 2 screen | **title prefilter** (`agent/titles.py`, string matching) ranks every title and keeps the best `max_jobs_per_run`; then the **description screen** (`screen.mode`) | free (`rules`) / pennies (`haiku`) |
 | 3 research | Opus + web search on the top `max_packets_per_run` postings scoring ≥ `min_score_to_generate` | $ |
 | 4 generate | Opus runs the uploaded Skill in a code-execution container, with stage 3's notes passed in as text | $$ |

@@ -235,26 +235,15 @@ pre.yaml .ln.fresh{animation:land 1s ease-out}
     <section class="block">
       <span class="eyebrow">Where</span>
       <h2>Locations</h2>
-      <p class="hint">What the job boards are asked for. <code>California</code> searches the whole state; <code>Remote</code> pulls remote-flagged roles.</p>
-      <div class="field">
-        <div class="tagbox" data-tags="locations"><input id="t-locations" placeholder="e.g. California"></div>
-        <div class="presets" data-presets="locations"></div>
+      <p class="hint">Any company hiring in these areas is searched. A posting is kept only if one of its offices is inside a ticked area, or it's remote and open to the US.</p>
+      <div class="toggles">
+        <label class="tg"><input type="checkbox" id="r-bay" checked><span><strong>Bay Area</strong><small>All nine counties: SF, Peninsula, South Bay / San Jose, East Bay, Marin, Napa, Solano, Sonoma.</small></span></label>
+        <label class="tg"><input type="checkbox" id="r-la" checked><span><strong>Los Angeles + Orange County</strong><small>LA County (Westside, downtown, Pasadena, San Gabriel Valley, the Valleys) and Irvine, Costa Mesa, Newport Beach.</small></span></label>
+        <label class="tg"><input type="checkbox" id="f-remote" checked><span><strong>Remote – US</strong><small>"Remote – New York" and "Remote – UK" are still dropped.</small></span></label>
       </div>
-      <div class="field">
-        <label class="lab" for="f-state">Every posting must be in <span class="sub">— checked on every posting from every source</span></label>
-        <select id="f-state">
-          <option value="CA" selected>California</option>
-          <option value="">— any state (check off) —</option>
-          <option value="WA">Washington</option>
-          <option value="NY">New York</option>
-          <option value="TX">Texas</option>
-          <option value="MA">Massachusetts</option>
-        </select>
-      </div>
-      <label class="opt"><input type="checkbox" id="f-remote" checked><span><strong>Also accept remote roles open to the US</strong><small>"Remote – US" can be done from California. "Remote – New York" and "Remote – UK" are still dropped.</small></span></label>
       <label class="opt" style="margin-top:8px"><input type="checkbox" id="f-unknownloc"><span><strong>Keep postings with no location</strong><small>Off: a posting that doesn't say where it is gets dropped.</small></span></label>
       <div class="field" style="margin-top:14px">
-        <label class="lab" for="t-cities">Extra towns <span class="sub">— places the built-in California list misses</span></label>
+        <label class="lab" for="t-cities">Extra towns <span class="sub">— places the built-in area lists miss</span></label>
         <div class="tagbox" data-tags="cities"><input id="t-cities" placeholder="e.g. Covina"></div>
       </div>
       <div class="row" style="margin-top:18px">
@@ -394,8 +383,22 @@ pre.yaml .ln.fresh{animation:land 1s ease-out}
       <h2>Where to search</h2>
       <div class="toggles">
         <label class="tg"><input type="checkbox" id="s-ats" checked><span><strong>ATS boards</strong><small>Free, no key. Your list above.</small></span></label>
-        <label class="tg"><input type="checkbox" id="s-adzuna" checked><span><strong>Adzuna</strong><small>Aggregator. Free tier, ~1,000 calls a month.</small></span></label>
-        <label class="tg"><input type="checkbox" id="s-google" checked><span><strong>Google Jobs</strong><small>Reaches LinkedIn and Indeed postings. Needs a SerpApi key.</small></span></label>
+        <label class="tg"><input type="checkbox" id="s-adzuna" checked><span><strong>Adzuna</strong><small>Any company. Free tier, ~1,000 calls a month.</small></span></label>
+        <label class="tg"><input type="checkbox" id="s-google" checked><span><strong>Google Jobs</strong><small>Any company, including LinkedIn and Indeed postings. Needs a SerpApi key.</small></span></label>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <div class="field">
+          <label class="lab" for="f-adz-calls">Adzuna calls per run</label>
+          <input type="number" id="f-adz-calls" min="1" max="500" value="30">
+        </div>
+        <div class="field">
+          <label class="lab" for="f-goog-calls">Google Jobs calls per run <span class="sub">— SerpApi free ≈ 100/month</span></label>
+          <input type="number" id="f-goog-calls" min="1" max="500" value="3">
+        </div>
+      </div>
+      <p class="hint" style="margin:8px 0 0">Searches rotate: each run takes the next batch, so every title × area is covered every few runs without going over a free tier.</p>
+      <div class="toggles" style="margin-top:12px">
+        <label class="tg"><input type="checkbox" id="f-agency" checked><span><strong>Drop staffing agencies</strong><small>Known agency names, "staffing"/"recruiting" firms, and ads written "on behalf of our client".</small></span></label>
         <label class="tg"><input type="checkbox" id="s-alerts"><span><strong>LinkedIn alert emails</strong><small>Reads alerts sent to your own inbox over IMAP. No job descriptions, so those get screened on thin context.</small></span></label>
       </div>
     </section>
@@ -473,7 +476,6 @@ pre.yaml .ln.fresh{animation:land 1s ease-out}
 const state = {
   titles:["Senior Product Manager","Principal Product Manager","Product Manager, AI","Product Manager, Developer Experience","Group Product Manager"],
   keywords:["senior product manager AI","product manager machine learning platform","product manager developer tools","principal product manager infrastructure"],
-  locations:["California","Remote"],
   exTitles:["intern","contract","associate product manager"],
   exCompanies:[],
   greenhouse:["anthropic","databricks","stripe"],
@@ -487,7 +489,6 @@ const state = {
 
 const PRESETS = {
   titles:["Director of Product","Staff Product Manager","Product Lead","Head of Product","Technical Product Manager","Product Manager, Platform"],
-  locations:["California","Remote","Los Angeles, CA","San Francisco, CA","San Diego, CA","San Jose, CA"],
   exTitles:["intern","junior","contract","staffing","associate product manager","unpaid"]
 };
 
@@ -577,7 +578,14 @@ function build(){
   list(state.keywords, "    ").forEach(push);
   push(`  keywords_from_titles: ${$("f-fromtitles").checked}`);
   push("  locations:");
-  list(state.locations, "    ").forEach(push);
+  if($("r-bay").checked){
+    push('    - name: "Bay Area"'); push('      near: "San Francisco, CA"'); push("      radius_km: 100");
+  }
+  if($("r-la").checked){
+    push('    - name: "Los Angeles + Orange County"'); push('      near: "Los Angeles, CA"'); push("      radius_km: 80");
+  }
+  if($("f-remote").checked) push('    - "Remote"');
+  if(!areaCount()) push("    []");
   push(`  country: ${q($("f-country").value)}`);
   push(`  max_days_old: ${$("f-days").value}`);
   push(`  max_jobs_per_run: ${$("f-maxjobs").value}`);
@@ -593,7 +601,9 @@ function build(){
   push(`  trust_estimated_salary: ${$("f-trust").checked}`);
   push("");
   push("location:");
-  push(`  state: ${q($("f-state").value)}`);
+  push("  regions:");
+  const regions = [$("r-bay").checked && "bay_area", $("r-la").checked && "los_angeles"].filter(Boolean);
+  list(regions, "    ").forEach(push);
   push(`  allow_remote: ${$("f-remote").checked}`);
   push(`  unknown: ${$("f-unknownloc").checked ? "keep" : "drop"}`);
   push("  extra_cities:");
@@ -618,7 +628,9 @@ function build(){
   push("");
   push("sources:");
   push(`  adzuna: ${$("s-adzuna").checked}`);
+  push(`  adzuna_calls_per_run: ${+$("f-adz-calls").value || 30}`);
   push(`  google_jobs: ${$("s-google").checked}`);
+  push(`  google_jobs_calls_per_run: ${+$("f-goog-calls").value || 3}`);
   push(`  ats_boards: ${$("s-ats").checked}`);
   push(`  linkedin_alert_email: ${$("s-alerts").checked}`);
   push("");
@@ -636,6 +648,8 @@ function build(){
   push("  exclude_companies:");
   list(state.exCompanies, "    ").forEach(push);
   push("  require_terms: []");
+  push(`  drop_staffing_agencies: ${$("f-agency").checked}`);
+  push("  extra_agencies: []");
   push("  boost_terms:");
   list(state.boosts, "    ").forEach(push);
   push("");
@@ -647,6 +661,8 @@ function build(){
   push("state_retention_days: 120");
   return L;
 }
+
+function areaCount(){ return ["r-bay","r-la","f-remote"].filter(id=>$(id).checked).length; }
 
 /* ── render, flashing only the lines that actually changed ──────── */
 let prev = [];
@@ -684,8 +700,9 @@ function paint(){
   $("list-read").textContent = $("f-list").value;
   const qs = new Set(state.keywords.map(k=>k.toLowerCase().replace(/,/g," ").replace(/\s+/g," ").trim()));
   if($("f-fromtitles").checked) state.titles.forEach(t=>qs.add(t.toLowerCase().replace(/,/g," ").replace(/\s+/g," ").trim()));
-  const calls = qs.size * state.locations.length;
-  $("calls-read").textContent = `${qs.size} queries × ${state.locations.length} locations = ${calls} calls per source per run (~${calls*30}/month daily).`;
+  const combos = qs.size * areaCount();
+  const g = Math.max(1, +$("f-goog-calls").value || 3);
+  $("calls-read").textContent = `${qs.size} queries × ${areaCount()} areas = ${combos} searches; at ${g} Google calls a run, all covered every ${Math.ceil(combos / g)} runs.`;
   $("floor-read").textContent = $("f-floor").value;
 
   const w = $("pay-warn"), drop = document.querySelector('input[name=unknown]:checked').value === "drop";
@@ -732,8 +749,8 @@ $("btn-dl").onclick = ()=>{
 
 /* ── autosave, when the host provides storage ───────────────────── */
 const FIELDS = ["f-salary","f-score","f-packets","f-days","f-maxjobs","f-name","f-email","f-home","f-country",
-                "f-list","f-floor","f-years","f-stretch","f-degree","f-state"];
-const FLAGS  = ["f-trust","s-ats","s-adzuna","s-google","s-alerts","f-fromtitles","f-remote","f-unknownloc"];
+                "f-list","f-floor","f-years","f-stretch","f-degree","f-adz-calls","f-goog-calls"];
+const FLAGS  = ["f-trust","s-ats","s-adzuna","s-google","s-alerts","f-fromtitles","f-remote","f-unknownloc","r-bay","r-la","f-agency"];
 let saveTimer;
 function save(){
   if(!window.storage) return;

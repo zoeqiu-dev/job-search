@@ -105,7 +105,7 @@ def _setup_root(tmp_path, monkeypatch, **search):
     monkeypatch.setattr(run, "ROOT", tmp_path)
     noise = Job("Data Center Architect", "Acme", url="https://jobs.example/2",
                 source="greenhouse:acme", description="x" * 300)
-    monkeypatch.setattr(sources, "collect", lambda cfg: [_job(), noise])
+    monkeypatch.setattr(sources, "collect", lambda cfg, *a: [_job(), noise])
 
 
 def test_dry_run_makes_no_api_calls(tmp_path, monkeypatch, capsys):
@@ -146,7 +146,7 @@ def test_hybrid_only_sends_unblocked_postings_to_haiku(tmp_path, monkeypatch, ca
     blocked = Job("Senior Product Manager, Defense", "Acme", url="https://jobs.example/3",
                   source="greenhouse:acme",
                   description=("ML platform roadmap PRD. " * 20) + "Active TS/SCI clearance required.")
-    monkeypatch.setattr(sources, "collect", lambda cfg: [_job(), blocked])
+    monkeypatch.setattr(sources, "collect", lambda cfg, *a: [_job(), blocked])
 
     sent = []
 
@@ -173,7 +173,7 @@ def test_titles_flag_overrides_config_for_one_run(tmp_path, monkeypatch, capsys)
     tpm = Job("Senior Technical Program Manager, ML", "Acme", location="Irvine, CA",
               url="https://jobs.example/tpm", source="greenhouse:acme",
               description=("ML platform roadmap PRD customer interviews developer tools. " * 10))
-    monkeypatch.setattr(sources, "collect", lambda cfg: [_job(), tpm])
+    monkeypatch.setattr(sources, "collect", lambda cfg, *a: [_job(), tpm])
     run.main(["--dry-run", "--titles", "Technical Program Manager",
               "--config", str(tmp_path / "config.yaml")])
     out = capsys.readouterr().out
@@ -185,10 +185,10 @@ def test_titles_flag_overrides_config_for_one_run(tmp_path, monkeypatch, capsys)
 def test_rescreen_revisits_screened_but_not_packets(tmp_path, monkeypatch):
     _setup_root(tmp_path, monkeypatch, max_packets_per_run=1)
     monkeypatch.setenv("RESUME_SKILL_ID", "skill_test123")
-    other = Job("Product Manager, Payments", "Beta", location="San Diego, CA",
+    other = Job("Product Manager, Payments", "Beta", location="San Jose, CA",
                 url="https://jobs.example/pay", source="greenhouse:beta",
                 description="Payments roadmap. " * 30)
-    monkeypatch.setattr(sources, "collect", lambda cfg: [_job(), other])
+    monkeypatch.setattr(sources, "collect", lambda cfg, *a: [_job(), other])
     fake = FakeClient()
     monkeypatch.setattr(llm, "client", lambda: fake)
     cfgp = str(tmp_path / "config.yaml")

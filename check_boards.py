@@ -20,7 +20,7 @@ from pathlib import Path
 import requests
 import yaml
 
-from agent.sources import location_verdict
+from agent.sources import location_verdict, region_cities
 
 ROOT = Path(__file__).resolve().parent
 UA = {"User-Agent": "personal-job-agent/1.0"}
@@ -44,7 +44,13 @@ OK, WARN, BAD, DIM = "\033[32m", "\033[33m", "\033[31m", "\033[90m"
 END = "\033[0m"
 
 
-def probe(ats: str, token: str, show_titles: bool = False, state: str = "ca") -> bool:
+def _areas() -> tuple[list[str], str]:
+    cfg = yaml.safe_load((ROOT / "config.yaml").read_text())
+    regions = (cfg.get("location") or {}).get("regions") or []
+    return region_cities(regions), " / ".join(regions) or "anywhere"
+
+
+def probe(ats: str, token: str, show_titles: bool = False, areas=None) -> bool:
     url_tpl, extract, title_of, loc_of = ENDPOINTS[ats]
     url = url_tpl.format(t=token)
     label = f"  {ats:<11} {token:<22}"
@@ -75,8 +81,9 @@ def probe(ats: str, token: str, show_titles: bool = False, state: str = "ca") ->
         print(f"{label} {WARN}200 but 0 openings{END} — valid board, nothing posted right now")
         return True
 
-    here = sum(location_verdict(loc_of(j), state) in ("in", "remote") for j in jobs)
-    print(f"{label} {OK}{len(jobs):>4} openings{END}  {here} in {state.upper()} or remote")
+    cities, label_areas = areas or _areas()
+    here = sum(location_verdict(loc_of(j), cities) in ("in", "remote") for j in jobs)
+    print(f"{label} {OK}{len(jobs):>4} openings{END}  {here} in {label_areas} or US-remote")
     if show_titles:
         for j in jobs[:4]:
             print(f"{DIM}                                    · {title_of(j)[:62]}{END}")

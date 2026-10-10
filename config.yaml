@@ -27,11 +27,16 @@ search:
     - "product manager developer tools"
     - "principal product manager infrastructure"
   keywords_from_titles: true         # also search every target title as-is
-  # What the aggregators are asked for. "California" searches the whole state;
-  # "Remote" pulls remote-flagged roles. Queries × locations = calls per run,
-  # printed at the start of each run.
+  # Where Adzuna and Google Jobs search — any company hiring for your titles.
+  # radius_km is wide on purpose: the location filter below decides what's
+  # actually kept. Each query is searched once per area.
   locations:
-    - "California"
+    - name: "Bay Area"
+      near: "San Francisco, CA"
+      radius_km: 100                 # reaches San Jose, Santa Rosa, Napa
+    - name: "Los Angeles + Orange County"
+      near: "Los Angeles, CA"
+      radius_km: 80                  # reaches Irvine, Santa Clarita, Covina
     - "Remote"
   country: "us"                      # Adzuna country code
   max_days_old: 3                    # only postings newer than this
@@ -57,11 +62,13 @@ search:
 
 # ── Location: applied to every posting from every source ──────────────────────
 location:
-  state: "CA"                        # posting must be in California…
-  allow_remote: true                 # …or remote and open to the US / California.
-                                     # false = California offices only.
+  regions:                           # a posting must have an office in one of these…
+    - bay_area                       #   all 9 Bay Area counties
+    - los_angeles                    #   LA County + Orange County
+  allow_remote: true                 # …or be remote and open to the US.
+                                     # "Remote - New York" / "Remote - UK" are dropped.
   unknown: drop                      # no location stated: drop | keep
-  extra_cities: []                   # towns the built-in California list misses
+  extra_cities: []                   # towns the built-in lists miss
 
 # ── Screening: how each surviving posting's description is judged ─────────────
 screen:
@@ -103,13 +110,21 @@ qualifications:
 
 # ── Where to search ───────────────────────────────────────────────────────────
 # Toggle sources on/off. See README §2 for why LinkedIn/Indeed work this way.
+# Adzuna and Google Jobs search every company; the ATS boards below add a
+# few companies directly. Each run spends at most N calls per aggregator and
+# rotates through the query × area combinations, so free tiers cover them all
+# every few runs instead of running out. Set these to your plan's monthly
+# allowance ÷ runs per month. Empty = no cap.
 sources:
-  adzuna: true                       # free tier, ~1000 calls/mo
+  adzuna: true
+  adzuna_calls_per_run: 30           # free tier ≈ 1,000/month → ~30 a day
   google_jobs: true                  # SerpApi — indexes LinkedIn + Indeed postings
+  google_jobs_calls_per_run: 3       # SerpApi free tier ≈ 100/month → 3 a day
   ats_boards: true                   # direct company boards, free, no key
   linkedin_alert_email: false        # parse LinkedIn job-alert emails from your inbox
 
-# Direct ATS boards — the highest-signal, zero-cost source.
+# Direct ATS boards — an extra source on top of the any-company search: free,
+# full descriptions, and roles land here before they reach aggregators.
 # Find the token in the board URL: boards.greenhouse.io/<token>
 # Confirmed responding: greenhouse anthropic/databricks/stripe, lever spotify,
 # ashby ramp. Run `python check_boards.py figma netflix openai` before adding
@@ -130,8 +145,12 @@ filters:
     - "intern"
     - "contract"
     - "associate product manager"
-  exclude_companies:
-    - "Some Staffing Agency LLC"
+  exclude_companies: []              # past employers, anywhere you'd rather not apply
+  # Staffing agencies repost the same jobs without naming the employer. Known
+  # agency names, names with "staffing"/"recruiting", and ads written "on
+  # behalf of our client" are dropped. Add any that slip through.
+  drop_staffing_agencies: true
+  extra_agencies: []
   require_terms: []                  # if set, title must contain one of these (whole words)
   # ATS boards list every office worldwide. Keep only postings whose location
   # names one of search.locations (city part) or one of these. Aggregators are

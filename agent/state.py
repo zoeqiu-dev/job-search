@@ -21,18 +21,28 @@ CREATE TABLE IF NOT EXISTS jobs (
     blockers      TEXT,
     status        TEXT,     -- screened | matched | packet | failed
     packet_dir    TEXT
-)"""
+);
+CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT)"""
 
 
 class State:
     def __init__(self, path: Path):
         self.db = sqlite3.connect(path)
-        self.db.execute(SCHEMA)
+        self.db.executescript(SCHEMA)
         self.db.commit()
 
     def seen(self, fingerprint: str) -> bool:
         return self.db.execute(
             "SELECT 1 FROM jobs WHERE fingerprint = ?", (fingerprint,)).fetchone() is not None
+
+    def get_kv(self, key: str) -> str | None:
+        row = self.db.execute("SELECT value FROM kv WHERE key = ?", (key,)).fetchone()
+        return row[0] if row else None
+
+    def set_kv(self, key: str, value: str) -> None:
+        self.db.execute("INSERT INTO kv VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET "
+                        "value = excluded.value", (key, value))
+        self.db.commit()
 
     def status(self, fingerprint: str) -> str | None:
         row = self.db.execute(

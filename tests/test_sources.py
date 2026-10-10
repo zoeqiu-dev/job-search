@@ -76,68 +76,173 @@ def test_exclude_terms_match_whole_words_only():
     assert kept == titles[:3]
 
 
-CA_CFG = {"location": {"state": "CA", "allow_remote": True, "unknown": "drop"}}
+AREA_CFG = {"location": {"regions": ["bay_area", "los_angeles"], "allow_remote": True,
+                         "unknown": "drop"}}
 
 
 @pytest.mark.parametrize("loc, verdict", [
-    ("Los Angeles, CA", "in"),
-    ("San Francisco, California, United States", "in"),
-    ("Santa Monica", "in"),
+    # Bay Area, all nine counties
+    ("San Francisco, CA", "in"),
     ("Mountain View, CA 94043", "in"),
     ("San Francisco Bay Area", "in"),
     ("Santa Clara or San Jose", "in"),
+    ("Oakland, California", "in"),
+    ("Santa Rosa, CA", "in"),
+    ("Dublin, CA", "in"),                              # East Bay, not Ireland
+    ("Seattle, WA; San Francisco, CA", "in"),          # any office in an area
+    # LA County + Orange County
+    ("Los Angeles, CA", "in"),
     ("Los Angeles, CA (+2 others)", "in"),
-    ("San Francisco, CA; New York, NY", "in"),        # any office in CA is enough
-    ("Remote - California", "in"),
+    ("Santa Monica", "in"),
+    ("Pasadena", "in"),
+    ("Covina, CA", "in"),
+    ("Irvine, CA", "in"),
+    ("Orange, CA", "in"),
+    ("Greater Los Angeles Area", "in"),
+    # US-remote
     ("Remote - US", "remote"),
+    ("Remote - California", "remote"),
     ("United States (Remote)", "remote"),
     ("Anywhere", "remote"),
     ("New York, NY | Remote (US)", "remote"),
+    # California, but not one of the areas
+    ("San Diego, CA", "out"),
+    ("Sacramento, CA", "out"),
+    ("California", "out"),
+    ("California, United States", "out"),
+    # elsewhere
     ("New York, NY", "out"),
-    ("Austin, TX or New York, NY", "out"),
+    ("Pasadena, TX", "out"),
+    ("Orange, TX", "out"),
+    ("Newark, NJ", "out"),
+    ("Dublin, Ireland", "out"),
+    ("Dublin", "out"),
     ("Portland, OR", "out"),
-    ("Seattle, Washington", "out"),
-    ("Washington, DC", "out"),
-    ("Pasadena, TX", "out"),                          # CA city name, other state
-    ("Richmond, VA", "out"),
-    ("Remote - New York", "out"),                     # remote, but limited to NY
+    ("Remote - New York", "out"),
     ("Remote - UK", "out"),
-    ("Remote, EMEA", "out"),
-    ("London, UK", "out"),
-    ("Toronto, ON, CA", "out"),                       # CA = Canada here
-    ("Vancouver, BC", "out"),
+    ("Toronto, ON, CA", "out"),
+    # can't tell
+    ("Glendale", "unknown"),                           # CA or AZ
     ("Hybrid", "unknown"),
     ("", "unknown"),
 ])
 def test_location_verdict(loc, verdict):
-    from agent.sources import location_verdict
-    assert location_verdict(loc, "ca") == verdict
+    from agent.sources import location_verdict, region_cities
+    assert location_verdict(loc, region_cities(["bay_area", "los_angeles"])) == verdict
 
 
-def test_california_filter_applies_to_every_source():
+def test_area_filter_applies_to_every_source():
     for source in ["adzuna", "google_jobs", "greenhouse:acme", "lever:acme", "ashby:acme"]:
-        assert apply_filters([_job(location="Irvine, CA", source=source)], CA_CFG)
-        assert not apply_filters([_job(location="Austin, TX", source=source)], CA_CFG)
+        assert apply_filters([_job(location="Palo Alto, CA", source=source)], AREA_CFG)
+        assert not apply_filters([_job(location="San Diego, CA", source=source)], AREA_CFG)
 
 
 def test_remote_can_be_switched_off():
-    cfg = {"location": {"state": "CA", "allow_remote": False}}
+    cfg = {"location": {"regions": ["bay_area"], "allow_remote": False}}
     assert not apply_filters([_job(location="Remote - US", source="adzuna")], cfg)
-    assert apply_filters([_job(location="Remote - California", source="adzuna")], cfg)
+    assert apply_filters([_job(location="Sunnyvale, CA", source="adzuna")], cfg)
+
+
+def test_one_region_only():
+    cfg = {"location": {"regions": ["los_angeles"]}}
+    assert apply_filters([_job(location="Culver City, CA")], cfg)
+    assert not apply_filters([_job(location="San Francisco, CA")], cfg)
+
+
+def test_unknown_region_is_a_clear_error():
+    with pytest.raises(ValueError, match="bay_area"):
+        apply_filters([_job()], {"location": {"regions": ["seattle"]}})
 
 
 def test_unknown_location_policy():
     j = lambda **kw: _job(location="", **kw)
-    assert not apply_filters([j(source="adzuna")], CA_CFG)
-    assert apply_filters([j(source="adzuna")], {"location": {"state": "CA", "unknown": "keep"}})
+    assert not apply_filters([j(source="adzuna")], AREA_CFG)
+    keep = {"location": {"regions": ["bay_area"], "unknown": "keep"}}
+    assert apply_filters([j(source="adzuna")], keep)
     # alert emails carry no location; the alert itself was set up with one
-    assert apply_filters([j(source="linkedin_alert_email")], CA_CFG)
+    assert apply_filters([j(source="linkedin_alert_email")], AREA_CFG)
 
 
-def test_extra_cities_and_no_state_means_no_check():
-    cfg = {"location": {"state": "California", "extra_cities": ["Covina"]}}
-    assert apply_filters([_job(location="Covina")], cfg)
-    assert apply_filters([_job(location="Austin, TX")], {"location": {"state": ""}})
+def test_extra_cities_and_no_regions_means_no_check():
+    cfg = {"location": {"regions": ["bay_area"], "extra_cities": ["Monterey"]}}
+    assert apply_filters([_job(location="Monterey, CA")], cfg)
+    assert apply_filters([_job(location="Austin, TX")], {"location": {}})
+
+
+@pytest.mark.parametrize("company, description, agency", [
+    ("Robert Half", "", True),
+    ("Robert Half Technology", "", True),
+    ("Acme Staffing LLC", "", True),
+    ("TalentHub Recruiting", "", True),
+    ("Jobot", "", True),
+    ("Acme", "On behalf of our client, a Series B AI startup, we seek a PM.", True),
+    ("Stripe", "We're hiring a PM to own our payments roadmap.", False),
+    ("Anthropic", "Our client success team partners with PMs.", False),
+    ("Haystack", "", False),
+    ("Volta", "", False),
+    ("Placement Labs", "", False),
+])
+def test_staffing_agencies(company, description, agency):
+    from agent.sources import is_agency
+    assert is_agency(_job(company=company, description=description)) == agency
+
+
+def test_agency_filter_can_be_extended_and_disabled():
+    j = _job(company="Niche Talent Co")
+    assert apply_filters([j], {"filters": {"extra_agencies": ["Niche Talent Co"]}}) == []
+    assert apply_filters([_job(company="Jobot")], {"filters": {"drop_staffing_agencies": False}})
+
+
+def test_search_areas_and_serpapi_place():
+    from agent.sources import _serpapi_place, search_areas
+    areas = search_areas({"search": {"locations": [
+        {"name": "Bay Area", "near": "San Francisco, CA", "radius_km": 100}, "Remote"]}})
+    assert areas[0] == {"name": "Bay Area", "near": "San Francisco, CA", "radius_km": 100,
+                        "remote": False}
+    assert areas[1]["remote"] is True
+    assert _serpapi_place("San Francisco, CA") == "San Francisco, California, United States"
+
+
+class _KV(dict):
+    def get_kv(self, k): return self.get(k)
+    def set_kv(self, k, v): self[k] = v
+
+
+def test_rotation_covers_every_combination_across_runs(capsys):
+    from agent.sources import Rotation
+    combos = list(range(10))
+    store, seen = _KV(), []
+    for _ in range(4):                                   # ceil(10 / 3) runs
+        seen += Rotation(store).plan("google_jobs", combos, 3)
+    assert set(seen) == set(combos)
+    assert "all covered every 4 runs" in capsys.readouterr().out
+    assert Rotation(store).plan("adzuna", combos, 50) == combos   # budget ≥ combos: all
+    assert Rotation(store).plan("adzuna", combos, None) == combos  # no cap
+
+
+def test_dry_run_rotation_does_not_advance():
+    from agent.sources import Rotation
+    store = _KV()
+    first = Rotation(store, save=False).plan("g", list(range(9)), 3)
+    assert Rotation(store, save=False).plan("g", list(range(9)), 3) == first
+
+
+def test_adzuna_sends_radius_and_respects_budget(monkeypatch):
+    from agent import sources
+    calls = []
+    monkeypatch.setenv("ADZUNA_APP_ID", "x")
+    monkeypatch.setenv("ADZUNA_APP_KEY", "y")
+    monkeypatch.setattr(sources, "_get", lambda url, **kw: calls.append(kw["params"]))
+    monkeypatch.setattr(sources.time, "sleep", lambda s: None)
+    cfg = {"search": {"keywords": ["pm ai", "pm platform"], "keywords_from_titles": False,
+                      "country": "us", "max_days_old": 3,
+                      "locations": [{"name": "LA", "near": "Los Angeles, CA", "radius_km": 80},
+                                    "Remote"]},
+           "sources": {"adzuna_calls_per_run": 3}}
+    sources.from_adzuna(cfg, sources.Rotation(_KV()))
+    assert len(calls) == 3
+    assert calls[0]["where"] == "Los Angeles, CA" and calls[0]["distance"] == 80
+    assert calls[1]["where"] == "" and calls[1]["what"] == "pm ai remote"
 
 
 def test_queries_follow_titles():

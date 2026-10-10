@@ -39,7 +39,7 @@ def test_add_only_tokens_that_respond(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("sys.argv", ["check_boards.py", "--add", "figma", "nosuchco"])
     check_boards.main()
     out = capsys.readouterr().out
-    assert "1 in CA or remote" in out
+    assert "1 in bay_area / los_angeles or US-remote" in out
     assert "Added to config.yaml: greenhouse:figma" in out
     import yaml
     ats = yaml.safe_load(cfg.read_text())["ats"]

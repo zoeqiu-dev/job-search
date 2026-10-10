@@ -50,7 +50,7 @@ def candidate_profile(cfg: dict, resume: str) -> str:
     q = cfg.get("qualifications") or {}
     return (f"Target titles: {', '.join(c.get('target_titles') or [])}\n"
             f"Based in: {c.get('location', '')}; open to: "
-            f"{', '.join((cfg.get('search') or {}).get('locations') or [])}\n"
+            f"{', '.join(a['name'] for a in sources.search_areas(cfg))}\n"
             f"Years of experience: {q.get('years_experience') or 'see resume'}\n\n"
             f"RESUME\n{resume}")
 
@@ -90,7 +90,9 @@ def main(argv: list[str] | None = None) -> int:
 
     # ── 1. collect ────────────────────────────────────────────────────────────
     print("Collecting")
-    jobs = sources.collect(cfg)
+    # A dry run reads the rotation but doesn't advance it, so the next real
+    # run still searches what the dry run just looked at.
+    jobs = sources.collect(cfg, sources.Rotation(state, save=not args.dry_run))
     if args.rescreen:
         fresh = [j for j in jobs if state.status(j.fingerprint) != "packet"]
     else:
