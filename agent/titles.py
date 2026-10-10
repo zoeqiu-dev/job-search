@@ -61,7 +61,10 @@ def split_title(title: str) -> tuple[str, str]:
     function on the head is what keeps "Engineering Manager, Product Platform"
     out: its head is "engineering manager".
     """
-    parts = re.split(r",|\s[-–—|:]\s|\(|\)|\s/\s", title or "", maxsplit=1)
+    # " to the CEO" is a qualifier too: "Executive Assistant to the Chief of
+    # Staff" is an executive assistant.
+    parts = re.split(r",|\s[-–—|:]\s|\(|\)|\s/\s|\s+to\s+the\s+", title or "", maxsplit=1,
+                     flags=re.I)
     head = expand(parts[0])
     qual = expand(parts[1]) if len(parts) > 1 else ""
     return head, qual
@@ -85,8 +88,11 @@ CONFUSABLE: dict[str, list[str]] = {
     "product_marketing": ["product marketing", "marketing"],
     "program_management": ["program manager", "program management", "programme manager"],
     "project_management": ["project manager", "project management"],
-    "engineering": ["engineering manager", "software engineer", "engineer",
-                    "engineering", "developer", "architect", "sre"],
+    "engineering_management": ["engineering manager", "engineering management",
+                               "director of engineering", "head of engineering",
+                               "vice president of engineering"],
+    "engineering": ["software engineer", "engineer", "engineering", "developer",
+                    "architect", "sre"],
     "product_owner": ["product owner", "scrum master"],
     "design": ["product designer", "product design", "designer", "ux", "ui"],
     "analytics": ["product analyst", "analyst", "data scientist", "scientist",
@@ -114,19 +120,20 @@ def _find_phrase(text: str, phrase: str) -> int:
     return m.start() if m else -1
 
 
-def _function_of(text: str) -> str | None:
-    """Longest function phrase in `text`, so "product marketing manager" is
-    product_marketing even though it contains "manager"."""
+def _function_of(text: str) -> tuple[str | None, str]:
+    """(function, phrase) for the longest function phrase in `text`, so
+    "product marketing manager" is product_marketing even though it contains
+    "manager"."""
     hits = []
     for phrase, fn in _ALL_PHRASES:
         if _find_phrase(text, phrase) >= 0:
-            hits.append((len(phrase), fn))
+            hits.append((len(phrase), fn, phrase))
     if not hits:
-        return None
+        return None, ""
     # A target-function phrase beats a shorter confusable inside the same text
     # ("technical product manager" has "product manager", not "engineer").
     hits.sort(reverse=True)
-    return hits[0][1]
+    return hits[0][1], hits[0][2]
 
 
 # ── Level ─────────────────────────────────────────────────────────────────────
@@ -168,6 +175,7 @@ class Parsed:
     function: str | None
     level: int
     words: set[str]
+    phrase: str = ""   # the words that named the function
 
 
 _STOP = {"of", "and", "the", "for", "a", "an", "in", "to", "on", "with", "at",
@@ -179,24 +187,57 @@ _ROLE_WORDS = {"product", "manager", "management", "senior", "principal",
 
 def parse(title: str) -> Parsed:
     head, qual = split_title(title)
-    fn = _function_of(head)
+    fn, phrase = _function_of(head)
     from_qual = False
     if fn is None and qual:
-        fn = _function_of(qual)
+        fn, phrase = _function_of(qual)
         # "Director, Product" / "Senior Manager, Product - Payments": a generic
         # leadership head whose qualifier is just the product org.
         if fn is None and re.match(r"product\b", qual) and re.search(
                 r"\b(manager|director|head|lead|vice president)\b", head):
-            fn = "product_management"
+            fn, phrase = "product_management", "product"
         from_qual = fn is not None
     lvl = level_of(head, qual, from_qual)
     words = set(f"{head} {qual}".split()) - _STOP
-    return Parsed(title, head, qual, fn, lvl, words)
+    return Parsed(title, head, qual, fn, lvl, words, phrase)
+
+
+_LEVEL_TOKENS = {w for phrase, _ in LEVEL_WORDS for w in phrase.split()}
+_SENIORITY_ADJ = {"senior", "junior", "associate", "principal", "staff", "lead",
+                  "group", "entry", "level"}
+
+
+def parse_target(title: str) -> Parsed:
+    """A target title from config. If it names a function the tables above
+    don't know ("Chief of Staff", "Solutions Consultant, AI"), its head minus
+    level words *becomes* the function, so any title can be a target."""
+    p = parse(title)
+    if p.function is None and p.head:
+        # Drop leading seniority adjectives only: "Senior Solutions Consultant"
+        # → "solutions consultant", but "Chief of Staff" stays whole.
+        words = p.head.split()
+        while len(words) > 1 and words[0] in _SENIORITY_ADJ:
+            words.pop(0)
+        core = " ".join(words)
+        p.function, p.phrase = f"custom:{core}", core
+    return p
+
+
+def _matches_function(job: Parsed, target: Parsed) -> bool:
+    if target.function and target.function.startswith("custom:"):
+        # The target's own phrase, in the job's head (or its qualifier when
+        # the head is just a level, as in "Senior Manager, Chief of Staff").
+        return (_find_phrase(job.head, target.phrase) >= 0
+                or (job.function is None and _find_phrase(job.qual, target.phrase) >= 0))
+    return job.function == target.function
 
 
 def _domain_words(p: Parsed) -> set[str]:
     """What the role is *about*, minus the words that just name the role."""
-    return {w for w in p.words if w not in _ROLE_WORDS and not w.isdigit()}
+    named = set(p.phrase.split())
+    return {w for w in p.words
+            if w not in _ROLE_WORDS and w not in named and w not in _LEVEL_TOKENS
+            and not w.isdigit()}
 
 
 # ── Scoring ───────────────────────────────────────────────────────────────────
@@ -207,13 +248,14 @@ STEP_UP = 8      # per level above: a stretch, worth a look
 def score_title(title: str, targets: list[str], boost_terms: list[str] | None = None) -> tuple[int, str]:
     """0-100 and a short reason. 0 means wrong function."""
     p = parse(title)
-    if p.function is None:
+    parsed_targets = [parse_target(t) for t in targets]
+    if p.function is None and not any(
+            tp.function.startswith("custom:") for tp in parsed_targets if tp.function):
         return 0, "no recognisable job function"
 
     best, why = 0, ""
-    for t in targets:
-        tp = parse(t)
-        if tp.function != p.function:
+    for t, tp in zip(targets, parsed_targets):
+        if not _matches_function(p, tp):
             continue
         s = 60
         diff = p.level - tp.level
@@ -230,7 +272,7 @@ def score_title(title: str, targets: list[str], boost_terms: list[str] | None = 
             best, why = s, f"≈ {t} (level {p.level} vs {tp.level})"
 
     if best == 0:
-        return 0, f"function is {p.function}, not a target"
+        return 0, f"function is {p.function or 'unrecognised'}, not a target"
 
     if boost_terms:
         text = f" {p.head} {p.qual} "
@@ -252,6 +294,11 @@ def rank(jobs: list, cfg: dict, verbose: bool = False) -> tuple[list, list]:
     s = cfg.get("search") or {}
     floor = s.get("title_match_floor", 45)
     boosts = (cfg.get("filters") or {}).get("boost_terms") or []
+
+    if verbose:
+        for t in targets:
+            tp = parse_target(t)
+            print(f"    target: {t}  →  {tp.function} (level {tp.level})")
 
     kept, dropped = [], []
     for j in jobs:

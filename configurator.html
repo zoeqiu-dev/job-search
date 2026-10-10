@@ -218,7 +218,7 @@ pre.yaml .ln.fresh{animation:land 1s ease-out}
     <section class="block">
       <span class="eyebrow">Titles</span>
       <h2>Roles you want</h2>
-      <p class="hint">Used to judge whether a posting is at your level. Add the titles you'd accept, including ones you'd stretch for — the screener scores against them rather than matching exactly.</p>
+      <p class="hint">Any job family works — product, program, marketing, chief of staff. Add the titles you'd accept, including stretches; postings are scored against them rather than matched exactly. With the box below ticked, each title is also searched for directly.</p>
       <div class="field">
         <label class="lab" for="t-titles">Target job titles</label>
         <div class="tagbox" data-tags="titles"><input id="t-titles" placeholder="Type a title, press Enter"></div>
@@ -227,21 +227,35 @@ pre.yaml .ln.fresh{animation:land 1s ease-out}
       <div class="field">
         <label class="lab" for="t-keywords">Search phrases <span class="sub">— what gets sent to the job boards</span></label>
         <div class="tagbox" data-tags="keywords"><input id="t-keywords" placeholder="e.g. product manager machine learning"></div>
-        <p class="hint" style="margin:8px 0 0">Different from titles: these are queries. Three to six is the sweet spot — each one multiplies your API calls, and past six they mostly return the same postings.</p>
+        <p class="hint" style="margin:8px 0 0">Extra queries beyond your titles. Each one multiplies your API calls.</p>
       </div>
+      <label class="tg"><input type="checkbox" id="f-fromtitles" checked><span><strong>Also search every title</strong><small>Change a title and the search follows. <b id="calls-read"></b></small></span></label>
     </section>
 
     <section class="block">
       <span class="eyebrow">Where</span>
       <h2>Locations</h2>
-      <p class="hint">Add <code>Remote</code> as its own entry to pull remote-flagged roles. Metro names work better than neighbourhoods.</p>
+      <p class="hint">What the job boards are asked for. <code>California</code> searches the whole state; <code>Remote</code> pulls remote-flagged roles.</p>
       <div class="field">
-        <div class="tagbox" data-tags="locations"><input id="t-locations" placeholder="e.g. Los Angeles, CA"></div>
+        <div class="tagbox" data-tags="locations"><input id="t-locations" placeholder="e.g. California"></div>
         <div class="presets" data-presets="locations"></div>
       </div>
       <div class="field">
-        <label class="lab" for="t-nearby">Nearby places <span class="sub">— company boards list every office worldwide; these also count as yours</span></label>
-        <div class="tagbox" data-tags="nearby"><input id="t-nearby" placeholder="e.g. Santa Monica"></div>
+        <label class="lab" for="f-state">Every posting must be in <span class="sub">— checked on every posting from every source</span></label>
+        <select id="f-state">
+          <option value="CA" selected>California</option>
+          <option value="">— any state (check off) —</option>
+          <option value="WA">Washington</option>
+          <option value="NY">New York</option>
+          <option value="TX">Texas</option>
+          <option value="MA">Massachusetts</option>
+        </select>
+      </div>
+      <label class="opt"><input type="checkbox" id="f-remote" checked><span><strong>Also accept remote roles open to the US</strong><small>"Remote – US" can be done from California. "Remote – New York" and "Remote – UK" are still dropped.</small></span></label>
+      <label class="opt" style="margin-top:8px"><input type="checkbox" id="f-unknownloc"><span><strong>Keep postings with no location</strong><small>Off: a posting that doesn't say where it is gets dropped.</small></span></label>
+      <div class="field" style="margin-top:14px">
+        <label class="lab" for="t-cities">Extra towns <span class="sub">— places the built-in California list misses</span></label>
+        <div class="tagbox" data-tags="cities"><input id="t-cities" placeholder="e.g. Covina"></div>
       </div>
       <div class="row" style="margin-top:18px">
         <div class="field">
@@ -406,7 +420,7 @@ pre.yaml .ln.fresh{animation:land 1s ease-out}
         </div>
         <div class="field">
           <label class="lab" for="f-maxjobs">Max postings screened per run</label>
-          <input type="number" id="f-maxjobs" min="5" max="200" value="40">
+          <input type="number" id="f-maxjobs" min="5" max="300" value="80">
         </div>
         <div class="field">
           <label class="lab" for="f-list">Min score to list the URL <span class="sub">— <b id="list-read">60</b>/100</span></label>
@@ -457,23 +471,23 @@ pre.yaml .ln.fresh{animation:land 1s ease-out}
 "use strict";
 
 const state = {
-  titles:["Senior Product Manager","Principal Product Manager","Product Manager, AI","Group Product Manager"],
-  keywords:["senior product manager AI","product manager machine learning platform","product manager developer tools"],
-  locations:["Los Angeles, CA","Remote"],
+  titles:["Senior Product Manager","Principal Product Manager","Product Manager, AI","Product Manager, Developer Experience","Group Product Manager"],
+  keywords:["senior product manager AI","product manager machine learning platform","product manager developer tools","principal product manager infrastructure"],
+  locations:["California","Remote"],
   exTitles:["intern","contract","associate product manager"],
   exCompanies:[],
   greenhouse:["anthropic","databricks","stripe"],
   lever:["spotify"],
   ashby:["ramp"],
-  nearby:["santa monica","pasadena","irvine","culver city","burbank","el segundo"],
+  cities:[],
   skills:["machine learning","ml platform","ai","llm","developer experience","developer tools","infrastructure","platform","roadmap","prd","cross-functional","customer interviews","documentation"],
   dealbreakers:["security clearance","ts/sci","active clearance"],
   boosts:["AI","machine learning","platform","developer","infrastructure"]
 };
 
 const PRESETS = {
-  titles:["Director of Product","Staff Product Manager","Product Lead","Head of Product"],
-  locations:["Remote","San Francisco, CA","New York, NY","Seattle, WA","Los Angeles, CA","Austin, TX"],
+  titles:["Director of Product","Staff Product Manager","Product Lead","Head of Product","Technical Product Manager","Product Manager, Platform"],
+  locations:["California","Remote","Los Angeles, CA","San Francisco, CA","San Diego, CA","San Jose, CA"],
   exTitles:["intern","junior","contract","staffing","associate product manager","unpaid"]
 };
 
@@ -561,6 +575,7 @@ function build(){
   push("search:");
   push("  keywords:");
   list(state.keywords, "    ").forEach(push);
+  push(`  keywords_from_titles: ${$("f-fromtitles").checked}`);
   push("  locations:");
   list(state.locations, "    ").forEach(push);
   push(`  country: ${q($("f-country").value)}`);
@@ -576,6 +591,13 @@ function build(){
   push(`  min_salary: ${sal}${sal===0 ? "   # 0 = filter off" : ""}`);
   push(`  salary_unknown: ${unknown}`);
   push(`  trust_estimated_salary: ${$("f-trust").checked}`);
+  push("");
+  push("location:");
+  push(`  state: ${q($("f-state").value)}`);
+  push(`  allow_remote: ${$("f-remote").checked}`);
+  push(`  unknown: ${$("f-unknownloc").checked ? "keep" : "drop"}`);
+  push("  extra_cities:");
+  list(state.cities, "    ").forEach(push);
   push("");
   push("screen:");
   push(`  mode: ${document.querySelector('input[name=mode]:checked').value}`);
@@ -614,9 +636,6 @@ function build(){
   push("  exclude_companies:");
   list(state.exCompanies, "    ").forEach(push);
   push("  require_terms: []");
-  push("  ats_location_filter: true");
-  push("  nearby_locations:");
-  list(state.nearby, "    ").forEach(push);
   push("  boost_terms:");
   list(state.boosts, "    ").forEach(push);
   push("");
@@ -663,6 +682,10 @@ function paint(){
   $("pay-read").textContent = +$("f-salary").value === 0 ? "No floor" : money($("f-salary").value);
   $("score-read").textContent = $("f-score").value;
   $("list-read").textContent = $("f-list").value;
+  const qs = new Set(state.keywords.map(k=>k.toLowerCase().replace(/,/g," ").replace(/\s+/g," ").trim()));
+  if($("f-fromtitles").checked) state.titles.forEach(t=>qs.add(t.toLowerCase().replace(/,/g," ").replace(/\s+/g," ").trim()));
+  const calls = qs.size * state.locations.length;
+  $("calls-read").textContent = `${qs.size} queries × ${state.locations.length} locations = ${calls} calls per source per run (~${calls*30}/month daily).`;
   $("floor-read").textContent = $("f-floor").value;
 
   const w = $("pay-warn"), drop = document.querySelector('input[name=unknown]:checked').value === "drop";
@@ -709,8 +732,8 @@ $("btn-dl").onclick = ()=>{
 
 /* ── autosave, when the host provides storage ───────────────────── */
 const FIELDS = ["f-salary","f-score","f-packets","f-days","f-maxjobs","f-name","f-email","f-home","f-country",
-                "f-list","f-floor","f-years","f-stretch","f-degree"];
-const FLAGS  = ["f-trust","s-ats","s-adzuna","s-google","s-alerts"];
+                "f-list","f-floor","f-years","f-stretch","f-degree","f-state"];
+const FLAGS  = ["f-trust","s-ats","s-adzuna","s-google","s-alerts","f-fromtitles","f-remote","f-unknownloc"];
 let saveTimer;
 function save(){
   if(!window.storage) return;

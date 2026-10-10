@@ -61,10 +61,22 @@ def main(argv: list[str] | None = None) -> int:
                     help="free stages only; no Anthropic calls, nothing recorded")
     ap.add_argument("-v", "--verbose", action="store_true")
     ap.add_argument("--config", default=str(ROOT / "config.yaml"))
+    ap.add_argument("--titles", nargs="+", metavar="TITLE",
+                    help='search these titles this run instead of config, e.g. '
+                         '--titles "Staff Product Manager" "Director of Product"')
+    ap.add_argument("--rescreen", action="store_true",
+                    help="look again at postings already screened (e.g. after changing "
+                         "titles or qualifications); packets already built are still skipped")
     args = ap.parse_args(argv)
 
     load_env(ROOT / ".env")
     cfg = yaml.safe_load(Path(args.config).read_text())
+    if args.titles:
+        # The titles become the whole search: config keywords are written for
+        # the configured titles and would drag the old search along.
+        cfg.setdefault("candidate", {})["target_titles"] = args.titles
+        cfg.setdefault("search", {}).update(keywords=[], keywords_from_titles=True)
+        print(f"Titles for this run: {', '.join(args.titles)}")
     s = cfg.get("search") or {}
     sc = cfg.get("screen") or {}
     models = cfg.get("models") or {}
@@ -79,8 +91,12 @@ def main(argv: list[str] | None = None) -> int:
     # ── 1. collect ────────────────────────────────────────────────────────────
     print("Collecting")
     jobs = sources.collect(cfg)
-    fresh = [j for j in jobs if not state.seen(j.fingerprint)]
-    print(f"  = {len(jobs)} after filters + dedupe, {len(fresh)} not seen before")
+    if args.rescreen:
+        fresh = [j for j in jobs if state.status(j.fingerprint) != "packet"]
+    else:
+        fresh = [j for j in jobs if not state.seen(j.fingerprint)]
+    print(f"  = {len(jobs)} after filters + dedupe, {len(fresh)} "
+          f"{'to look at' if args.rescreen else 'not seen before'}")
 
     # ── 2a. free title prefilter: rank everything, keep the best N ───────────
     ranked, dropped = titles.rank(fresh, cfg, verbose=args.verbose)

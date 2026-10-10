@@ -76,20 +76,87 @@ def test_exclude_terms_match_whole_words_only():
     assert kept == titles[:3]
 
 
-def test_ats_location_filter():
-    cfg = {"search": {"locations": ["Los Angeles, CA", "Remote"], "country": "us"},
-           "filters": {"nearby_locations": ["santa monica"]}}
-    cases = {
-        "Los Angeles, CA": True, "Santa Monica, CA": True, "Remote - US": True,
-        "San Francisco, CA | New York, NY | Remote (US)": True, "": True,
-        "London, UK": False, "Remote - UK": False, "San Francisco, CA": False,
-        "Remote, EMEA": False,
-    }
-    for loc, keep in cases.items():
-        got = apply_filters([_job(location=loc, source="greenhouse:acme")], cfg)
-        assert bool(got) == keep, loc
-    # aggregators were already searched per location: never dropped here
-    assert apply_filters([_job(location="San Francisco, CA", source="adzuna")], cfg)
+CA_CFG = {"location": {"state": "CA", "allow_remote": True, "unknown": "drop"}}
+
+
+@pytest.mark.parametrize("loc, verdict", [
+    ("Los Angeles, CA", "in"),
+    ("San Francisco, California, United States", "in"),
+    ("Santa Monica", "in"),
+    ("Mountain View, CA 94043", "in"),
+    ("San Francisco Bay Area", "in"),
+    ("Santa Clara or San Jose", "in"),
+    ("Los Angeles, CA (+2 others)", "in"),
+    ("San Francisco, CA; New York, NY", "in"),        # any office in CA is enough
+    ("Remote - California", "in"),
+    ("Remote - US", "remote"),
+    ("United States (Remote)", "remote"),
+    ("Anywhere", "remote"),
+    ("New York, NY | Remote (US)", "remote"),
+    ("New York, NY", "out"),
+    ("Austin, TX or New York, NY", "out"),
+    ("Portland, OR", "out"),
+    ("Seattle, Washington", "out"),
+    ("Washington, DC", "out"),
+    ("Pasadena, TX", "out"),                          # CA city name, other state
+    ("Richmond, VA", "out"),
+    ("Remote - New York", "out"),                     # remote, but limited to NY
+    ("Remote - UK", "out"),
+    ("Remote, EMEA", "out"),
+    ("London, UK", "out"),
+    ("Toronto, ON, CA", "out"),                       # CA = Canada here
+    ("Vancouver, BC", "out"),
+    ("Hybrid", "unknown"),
+    ("", "unknown"),
+])
+def test_location_verdict(loc, verdict):
+    from agent.sources import location_verdict
+    assert location_verdict(loc, "ca") == verdict
+
+
+def test_california_filter_applies_to_every_source():
+    for source in ["adzuna", "google_jobs", "greenhouse:acme", "lever:acme", "ashby:acme"]:
+        assert apply_filters([_job(location="Irvine, CA", source=source)], CA_CFG)
+        assert not apply_filters([_job(location="Austin, TX", source=source)], CA_CFG)
+
+
+def test_remote_can_be_switched_off():
+    cfg = {"location": {"state": "CA", "allow_remote": False}}
+    assert not apply_filters([_job(location="Remote - US", source="adzuna")], cfg)
+    assert apply_filters([_job(location="Remote - California", source="adzuna")], cfg)
+
+
+def test_unknown_location_policy():
+    j = lambda **kw: _job(location="", **kw)
+    assert not apply_filters([j(source="adzuna")], CA_CFG)
+    assert apply_filters([j(source="adzuna")], {"location": {"state": "CA", "unknown": "keep"}})
+    # alert emails carry no location; the alert itself was set up with one
+    assert apply_filters([j(source="linkedin_alert_email")], CA_CFG)
+
+
+def test_extra_cities_and_no_state_means_no_check():
+    cfg = {"location": {"state": "California", "extra_cities": ["Covina"]}}
+    assert apply_filters([_job(location="Covina")], cfg)
+    assert apply_filters([_job(location="Austin, TX")], {"location": {"state": ""}})
+
+
+def test_queries_follow_titles():
+    from agent.sources import queries
+    cfg = {"search": {"keywords": ["senior product manager AI", "PM developer tools"],
+                      "keywords_from_titles": True},
+           "candidate": {"target_titles": ["Senior Product Manager, AI", "Chief of Staff"]}}
+    # "Senior Product Manager, AI" duplicates the first keyword once commas/case are ignored
+    assert queries(cfg) == ["senior product manager AI", "PM developer tools", "Chief of Staff"]
+    cfg["search"]["keywords_from_titles"] = False
+    assert queries(cfg) == ["senior product manager AI", "PM developer tools"]
+
+
+def test_adzuna_location_gets_state_from_area():
+    from agent.sources import _adzuna_location
+    loc = {"display_name": "Santa Monica, Los Angeles County",
+           "area": ["US", "California", "Los Angeles County", "Santa Monica"]}
+    assert _adzuna_location(loc) == "Santa Monica, Los Angeles County, California"
+    assert _adzuna_location({"display_name": "Austin, Texas", "area": ["US", "Texas"]}) == "Austin, Texas"
 
 
 def test_lever_description_includes_requirement_lists():

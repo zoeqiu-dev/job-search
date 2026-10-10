@@ -137,6 +137,23 @@ def _get(url: str, **kw) -> requests.Response | None:
     return None
 
 
+def queries(cfg: dict) -> list[str]:
+    """What gets sent to the aggregators: search.keywords plus, when
+    search.keywords_from_titles is on, every target title. So changing your
+    titles changes the search, not just the filter. Case-insensitive dedupe."""
+    s = cfg.get("search") or {}
+    qs = list(s.get("keywords") or [])
+    if s.get("keywords_from_titles", True):
+        qs += (cfg.get("candidate") or {}).get("target_titles") or []
+    seen, out = set(), []
+    for q in qs:
+        k = " ".join(q.lower().replace(",", " ").split())
+        if k and k not in seen:
+            seen.add(k)
+            out.append(q)
+    return out
+
+
 # ── Adzuna ────────────────────────────────────────────────────────────────────
 def from_adzuna(cfg: dict) -> list[Job]:
     app_id, app_key = os.environ.get("ADZUNA_APP_ID"), os.environ.get("ADZUNA_APP_KEY")
@@ -145,14 +162,17 @@ def from_adzuna(cfg: dict) -> list[Job]:
         return []
 
     s, out = cfg["search"], []
-    for kw in s["keywords"]:
+    for kw in queries(cfg):
         for loc in s["locations"]:
+            remote = loc.lower() == "remote"
             url = f"https://api.adzuna.com/v1/api/jobs/{s['country']}/search/1"
             r = _get(url, params={
                 "app_id": app_id, "app_key": app_key,
-                "what": kw,
-                "where": "" if loc.lower() == "remote" else loc,
-                "results_per_page": 25,
+                # Adzuna has no remote flag; an empty `where` alone returns
+                # onsite jobs nationwide. Ask for the word instead.
+                "what": f"{kw} remote" if remote else kw,
+                "where": "" if remote else loc,
+                "results_per_page": 50,         # Adzuna's max; same one call
                 "max_days_old": s["max_days_old"],
                 "content-type": "application/json",
             })
@@ -172,7 +192,7 @@ def from_adzuna(cfg: dict) -> list[Job]:
                 out.append(Job(
                     title=item.get("title", "").strip(),
                     company=item.get("company", {}).get("display_name", "").strip(),
-                    location=item.get("location", {}).get("display_name", ""),
+                    location=_adzuna_location(item.get("location") or {}),
                     url=item.get("redirect_url", ""),
                     description=re.sub(r"<[^>]+>", "", item.get("description", "")),
                     salary=sal, salary_min=lo, salary_max=hi,
@@ -185,6 +205,16 @@ def from_adzuna(cfg: dict) -> list[Job]:
     return out
 
 
+def _adzuna_location(loc: dict) -> str:
+    """Adzuna's display_name can omit the state ("Santa Monica, Los Angeles
+    County"); its `area` list has it (["US", "California", ...])."""
+    name = loc.get("display_name", "")
+    area = loc.get("area") or []
+    if len(area) > 1 and area[1].lower() not in name.lower():
+        name = f"{name}, {area[1]}" if name else area[1]
+    return name
+
+
 # ── Google Jobs (SerpApi) ─────────────────────────────────────────────────────
 def from_google_jobs(cfg: dict) -> list[Job]:
     """Google for Jobs indexes LinkedIn, Indeed, Glassdoor and company boards.
@@ -195,13 +225,16 @@ def from_google_jobs(cfg: dict) -> list[Job]:
         return []
 
     s, out = cfg["search"], []
-    for kw in s["keywords"]:
+    for kw in queries(cfg):
         for loc in s["locations"]:
+            remote = loc.lower() == "remote"
             r = _get("https://serpapi.com/search", params={
                 "engine": "google_jobs", "q": kw,
-                "location": None if loc.lower() == "remote" else loc,
-                "ltype": "1" if loc.lower() == "remote" else None,
-                "hl": "en", "api_key": key,
+                # SerpApi wants a canonical place: "California" alone is
+                # ambiguous, "California, United States" isn't.
+                "location": None if remote else (loc if "," in loc else f"{loc}, United States"),
+                "ltype": "1" if remote else None,
+                "gl": s.get("country", "us"), "hl": "en", "api_key": key,
             })
             if not r:
                 continue
@@ -356,6 +389,10 @@ def _body_of(msg) -> str:
 def collect(cfg: dict) -> list[Job]:
     src = cfg.get("sources", {})
     jobs: list[Job] = []
+    if src.get("adzuna") or src.get("google_jobs"):
+        q, locs = len(queries(cfg)), len((cfg.get("search") or {}).get("locations") or [])
+        print(f"  {q} queries × {locs} locations = {q * locs} calls per aggregator per run "
+              f"(~{q * locs * 30}/month at one run a day — check your SerpApi plan)")
     if src.get("adzuna"):
         jobs += from_adzuna(cfg)
     if src.get("google_jobs"):
@@ -375,7 +412,7 @@ def apply_filters(jobs: Iterable[Job], cfg: dict) -> list[Job]:
     bad_title = [_word_re(t) for t in f.get("exclude_title_terms", []) or []]
     bad_co = [_norm_company(c) for c in f.get("exclude_companies", []) or []]
     need = [_word_re(t) for t in f.get("require_terms", []) or []]
-    near = _location_terms(cfg)
+    where_ok = _location_rule(cfg)
 
     floor = s.get("min_salary") or 0
     # Most postings state no pay at all. Dropping those would discard the
@@ -394,7 +431,7 @@ def apply_filters(jobs: Iterable[Job], cfg: dict) -> list[Job]:
             continue
         if need and not any(n.search(t) for n in need):
             continue
-        if near and not _location_ok(j, near, s.get("country", "us")):
+        if where_ok and not where_ok(j):
             dropped_loc += 1
             continue
 
@@ -412,7 +449,8 @@ def apply_filters(jobs: Iterable[Job], cfg: dict) -> list[Job]:
     if dropped_pay:
         print(f"  · dropped {dropped_pay} on the salary floor (${floor:,})")
     if dropped_loc:
-        print(f"  · dropped {dropped_loc} ATS postings outside your locations")
+        state = ((cfg.get("location") or {}).get("state") or "").upper()
+        print(f"  · dropped {dropped_loc} postings not in {state}")
     return kept
 
 
@@ -420,51 +458,150 @@ def _word_re(term: str) -> re.Pattern:
     return re.compile(rf"(?<![a-z0-9]){re.escape(term.lower())}(?![a-z0-9])")
 
 
-# Remote postings that are remote *somewhere else*.
-_FOREIGN = ["uk", "united kingdom", "london", "emea", "europe", "eu", "canada",
-            "toronto", "india", "bangalore", "apac", "germany", "berlin", "ireland",
-            "dublin", "australia", "sydney", "singapore", "japan", "tokyo", "brazil",
-            "mexico", "latam", "france", "paris", "netherlands", "amsterdam",
-            "spain", "poland", "israel", "korea", "seoul", "switzerland", "zurich"]
+# ── Location: is this posting in the state you want? ─────────────────────────
+# Applied to every source. Aggregators can't be trusted to have done it: a
+# "Remote" query to Adzuna returns onsite jobs nationwide, and ATS boards list
+# every office the company has.
+
+US_STATES = {
+    "al": "alabama", "ak": "alaska", "az": "arizona", "ar": "arkansas", "ca": "california",
+    "co": "colorado", "ct": "connecticut", "de": "delaware", "dc": "district of columbia",
+    "fl": "florida", "ga": "georgia", "hi": "hawaii", "id": "idaho", "il": "illinois",
+    "in": "indiana", "ia": "iowa", "ks": "kansas", "ky": "kentucky", "la": "louisiana",
+    "me": "maine", "md": "maryland", "ma": "massachusetts", "mi": "michigan",
+    "mn": "minnesota", "ms": "mississippi", "mo": "missouri", "mt": "montana",
+    "ne": "nebraska", "nv": "nevada", "nh": "new hampshire", "nj": "new jersey",
+    "nm": "new mexico", "ny": "new york", "nc": "north carolina", "nd": "north dakota",
+    "oh": "ohio", "ok": "oklahoma", "or": "oregon", "pa": "pennsylvania",
+    "ri": "rhode island", "sc": "south carolina", "sd": "south dakota", "tn": "tennessee",
+    "tx": "texas", "ut": "utah", "vt": "vermont", "va": "virginia", "wa": "washington",
+    "wv": "west virginia", "wi": "wisconsin", "wy": "wyoming",
+}
+
+# Postings often name only the city. Ambiguous names (Newark, Richmond,
+# Concord, Dublin, Ontario, Carson…) are left out; "City, CA" still matches.
+STATE_CITIES = {"ca": """
+    los angeles|san francisco|san jose|san diego|oakland|sacramento|fresno|long beach|
+    irvine|santa monica|pasadena|burbank|glendale|culver city|el segundo|playa vista|
+    marina del rey|west hollywood|beverly hills|century city|torrance|manhattan beach|
+    redondo beach|hawthorne|inglewood|downey|whittier|covina|west covina|pomona|
+    rancho cucamonga|riverside|san bernardino|anaheim|santa ana|costa mesa|
+    newport beach|huntington beach|fullerton|tustin|lake forest|aliso viejo|
+    mission viejo|laguna hills|laguna beach|orange county|inland empire|
+    thousand oaks|westlake village|calabasas|woodland hills|sherman oaks|studio city|
+    north hollywood|van nuys|chatsworth|valencia|santa clarita|simi valley|ventura|
+    oxnard|camarillo|santa barbara|goleta|san luis obispo|bakersfield|carlsbad|
+    la jolla|del mar|oceanside|escondido|temecula|chula vista|palo alto|menlo park|
+    mountain view|sunnyvale|santa clara|cupertino|redwood city|redwood shores|
+    san mateo|foster city|burlingame|south san francisco|san bruno|millbrae|
+    san carlos|los altos|los gatos|campbell|milpitas|fremont|union city|hayward|
+    san leandro|alameda|emeryville|berkeley|walnut creek|pleasanton|livermore|
+    san ramon|santa rosa|petaluma|novato|san rafael|sausalito|mill valley|
+    santa cruz|scotts valley|monterey|davis|roseville|folsom|rancho cordova|
+    stockton|modesto|bay area|silicon valley|socal|norcal""",
+}
+
+_FOREIGN = ["uk", "united kingdom", "england", "london", "emea", "europe", "eu",
+            "canada", "toronto", "vancouver", "montreal", "ottawa", "waterloo",
+            "india", "bangalore", "bengaluru", "hyderabad", "apac", "germany", "berlin",
+            "munich", "ireland", "dublin", "australia", "sydney", "melbourne",
+            "singapore", "japan", "tokyo", "brazil", "sao paulo", "mexico", "latam",
+            "france", "paris", "netherlands", "amsterdam", "spain", "madrid",
+            "barcelona", "poland", "warsaw", "israel", "tel aviv", "korea", "seoul",
+            "switzerland", "zurich", "sweden", "stockholm", "denmark", "copenhagen",
+            "china", "hong kong", "taiwan", "philippines", "argentina", "colombia"]
+# Canadian province codes, so "Vancouver, BC" or "Toronto, ON, CA" isn't California.
+_CA_PROVINCES = r",\s*(on|bc|qc|ab|mb|ns|nb|nl|pe|sk)\b"
+_REMOTE = r"\b(remote|anywhere|distributed|work from home|wfh|virtual)\b"
+_US = r"\b(us|usa|u\.s\.?|united states|north america|americas)\b"
 
 
-def _location_terms(cfg: dict) -> list[str]:
-    """Lowercased place names a posting's location must mention. Empty list
-    disables the check."""
-    f = cfg.get("filters", {}) or {}
-    if not f.get("ats_location_filter", True):
-        return []
-    s = cfg.get("search", {}) or {}
-    terms = []
-    for loc in s.get("locations") or []:
-        city = loc.split(",")[0].strip().lower()
-        if city:
-            terms.append(city)
-    terms += [t.lower() for t in f.get("nearby_locations") or []]
-    return terms
+def _word_re(term: str) -> re.Pattern:
+    return re.compile(rf"(?<![a-z0-9]){re.escape(term.lower())}(?![a-z0-9])")
 
 
-def _location_ok(j: Job, terms: list[str], country: str) -> bool:
-    """Applied to ATS boards only. Adzuna and Google Jobs were already queried
-    per location, and their "Santa Monica, CA" for a "Los Angeles" search is a
-    match this string check would wrongly drop. ATS boards return every office
-    worldwide, so without this a London role reaches the screener."""
-    if not j.source.split(":")[0] in ("greenhouse", "lever", "ashby"):
+def _states_named(part: str) -> set[str]:
+    """US state codes a location string names: ", NY", "New York", "Texas"."""
+    found = set()
+    for code, name in US_STATES.items():
+        # Codes only after a comma or dash ("Austin, TX", "Remote - NY") —
+        # bare "in", "or", "me" are ordinary words.
+        if re.search(rf"(,|\s-|\()\s*{code}\b", part) or _word_re(name).search(part):
+            found.add(code)
+    if "west virginia" in part:
+        found.discard("va")
+    if "washington" in part and re.search(r"washington,?\s*d\.?c", part):
+        found.discard("wa"); found.add("dc")
+    return found
+
+
+def _foreign(part: str) -> bool:
+    if re.search(_CA_PROVINCES, part):
         return True
-    loc = (j.location or "").lower()
+    return any(_word_re(x).search(part) for x in _FOREIGN if not (
+        x == "mexico" and "new mexico" in part))
+
+
+def location_verdict(location: str, state: str = "ca", extra_cities=(),
+                     allow_remote: bool = True) -> str:
+    """'in' | 'remote' | 'out' | 'unknown' for one posting's location string.
+
+    Multi-office strings ("San Francisco, CA; New York, NY") count as 'in' if
+    any office is in the state. Remote counts only if it isn't remote
+    somewhere else ("Remote - UK") or limited to other states ("Remote - NY").
+    """
+    state = state.lower()
+    loc = (location or "").lower().strip()
     if not loc:
-        return True
-    for t in terms:
-        if t == "remote":
-            if "remote" in loc and not (country == "us" and any(
-                    _word_re(x).search(loc) for x in _FOREIGN)):
-                return True
-            if country == "us" and "anywhere" in loc:
-                return True
-        elif t in loc:
-            return True
-    # "San Francisco, CA | New York, NY | Remote (US)": any one acceptable office is enough
-    return False
+        return "unknown"
+    cities = [c.strip() for c in STATE_CITIES.get(state, "").replace("\n", "").split("|") if c.strip()]
+    cities += [c.lower() for c in extra_cities]
+
+    # "Santa Clara or San Jose" is two places; "Portland, OR" is Oregon.
+    parts = [p.strip() for p in re.split(r";|\||\n|\s/\s|(?<!,)\s+or\s+|\+\s*\d+\s+others?|•", loc)
+             if p.strip()]
+    saw_place = False
+    remote_ok = False
+    for part in parts:
+        named = _states_named(part)
+        foreign = _foreign(part)
+        if named or foreign:
+            saw_place = True
+        if state in named and not foreign:
+            return "in"
+        if not named and not foreign and any(_word_re(c).search(part) for c in cities):
+            return "in"
+        if re.search(_REMOTE, part):
+            saw_place = True
+            if foreign and not re.search(_US, part):
+                continue
+            if named and state not in named:
+                continue  # "Remote - New York only"
+            remote_ok = True
+    if remote_ok and allow_remote:
+        return "remote"
+    return "out" if saw_place or remote_ok else "unknown"
+
+
+def _location_rule(cfg: dict):
+    """Returns f(job) -> bool, or None when the check is off."""
+    lc = cfg.get("location") or {}
+    state = (lc.get("state") or "").lower()
+    if not state:
+        return None
+    state = next((k for k, v in US_STATES.items() if state in (k, v)), state)
+    allow_remote = lc.get("allow_remote", True)
+    unknown = (lc.get("unknown") or "drop").lower()
+    extra = lc.get("extra_cities") or []
+
+    def ok(j: Job) -> bool:
+        v = location_verdict(j.location, state, extra, allow_remote)
+        j.extra["location_verdict"] = v
+        if v == "unknown":
+            # Alert emails carry no location; the alert itself was set up with one.
+            return unknown == "keep" or j.source == "linkedin_alert_email"
+        return v in ("in", "remote")
+    return ok
 
 
 def _clears_salary(j: Job, floor: int, trust_estimates: bool) -> tuple[bool, bool]:

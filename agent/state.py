@@ -34,6 +34,11 @@ class State:
         return self.db.execute(
             "SELECT 1 FROM jobs WHERE fingerprint = ?", (fingerprint,)).fetchone() is not None
 
+    def status(self, fingerprint: str) -> str | None:
+        row = self.db.execute(
+            "SELECT status FROM jobs WHERE fingerprint = ?", (fingerprint,)).fetchone()
+        return row[0] if row else None
+
     def record(self, job, status: str, screen: dict | None = None, packet_dir: str = "") -> None:
         screen = screen or {}
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")

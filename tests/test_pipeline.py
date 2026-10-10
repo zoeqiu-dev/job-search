@@ -166,3 +166,45 @@ def test_hybrid_only_sends_unblocked_postings_to_haiku(tmp_path, monkeypatch, ca
     # Haiku's soft "blockers" don't remove a posting it scored 88
     assert "https://jobs.example/1" in matches and "jobs.example/3" not in matches
     assert "strong fit" in matches
+
+
+def test_titles_flag_overrides_config_for_one_run(tmp_path, monkeypatch, capsys):
+    _setup_root(tmp_path, monkeypatch)
+    tpm = Job("Senior Technical Program Manager, ML", "Acme", location="Irvine, CA",
+              url="https://jobs.example/tpm", source="greenhouse:acme",
+              description=("ML platform roadmap PRD customer interviews developer tools. " * 10))
+    monkeypatch.setattr(sources, "collect", lambda cfg: [_job(), tpm])
+    run.main(["--dry-run", "--titles", "Technical Program Manager",
+              "--config", str(tmp_path / "config.yaml")])
+    out = capsys.readouterr().out
+    assert "https://jobs.example/tpm" in out and "https://jobs.example/1" not in out
+    # config.yaml itself is untouched
+    assert "Technical Program Manager" not in (tmp_path / "config.yaml").read_text()
+
+
+def test_rescreen_revisits_screened_but_not_packets(tmp_path, monkeypatch):
+    _setup_root(tmp_path, monkeypatch, max_packets_per_run=1)
+    monkeypatch.setenv("RESUME_SKILL_ID", "skill_test123")
+    other = Job("Product Manager, Payments", "Beta", location="San Diego, CA",
+                url="https://jobs.example/pay", source="greenhouse:beta",
+                description="Payments roadmap. " * 30)
+    monkeypatch.setattr(sources, "collect", lambda cfg: [_job(), other])
+    fake = FakeClient()
+    monkeypatch.setattr(llm, "client", lambda: fake)
+    cfgp = str(tmp_path / "config.yaml")
+    run.main(["--config", cfgp])                     # packet for _job(), "Payments" screened
+
+    from agent.state import State
+    st = State(tmp_path / "state.db")
+    assert st.status(_job().fingerprint) == "packet"
+    assert st.status(other.fingerprint) in ("screened", "matched")
+    st.close()
+
+    seen = []
+    real_rank = run.titles.rank
+    monkeypatch.setattr(run.titles, "rank", lambda jobs, cfg, verbose=False: (
+        seen.extend(j.title for j in jobs), real_rank(jobs, cfg, verbose))[1])
+    run.main(["--config", cfgp])
+    assert seen == []                                # normal run: both already seen
+    run.main(["--rescreen", "--config", cfgp])
+    assert seen == ["Product Manager, Payments"]     # packet job still skipped

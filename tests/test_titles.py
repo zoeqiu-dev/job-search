@@ -55,7 +55,7 @@ def test_abbreviations_expanded():
 
 
 def test_function_judged_on_head_not_qualifier():
-    assert parse("Engineering Manager, Product Platform").function == "engineering"
+    assert parse("Engineering Manager, Product Platform").function == "engineering_management"
     assert parse("Product Manager, Engineering Platform").function == "product_management"
     assert parse("Manager, Product Management").function == "product_management"
 
@@ -84,3 +84,18 @@ def test_rank_orders_and_drops():
     assert [j.title for j in kept] == ["Senior Product Manager, AI", "Product Manager, Payments"]
     assert [j.title for j in dropped] == ["Data Center Architect"]
     assert kept[0].extra["title_score"] >= kept[1].extra["title_score"]
+
+
+@pytest.mark.parametrize("targets, keep, drop", [
+    (["Technical Program Manager"], ["Senior TPM, ML Infrastructure"], ["Product Manager", "Project Manager"]),
+    (["Chief of Staff"], ["Chief of Staff to the CEO", "Senior Chief of Staff, Engineering"],
+     ["Executive Assistant to the Chief of Staff", "Staff Software Engineer", "Product Manager"]),
+    (["Product Marketing Manager, AI"], ["Senior Product Marketing Manager, AI"], ["Product Manager, AI"]),
+    (["Engineering Manager"], ["Engineering Manager, ML Platform"], ["Senior Software Engineer"]),
+    (["Solutions Consultant"], ["Senior Solutions Consultant"], ["Product Manager"]),
+])
+def test_any_job_family_can_be_a_target(targets, keep, drop):
+    for t in keep:
+        assert score_title(t, targets)[0] >= FLOOR, t
+    for t in drop:
+        assert score_title(t, targets)[0] < FLOOR, t

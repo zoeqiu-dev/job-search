@@ -5,6 +5,12 @@ candidate:
   phone: ""
   linkedin: ""
   location: "Covina, CA"
+  # The roles you want. Change these freely: the title filter works for any
+  # job family (product, program, marketing, chief of staff, …), and with
+  # search.keywords_from_titles on, each one is also searched for directly.
+  # One-off without editing this file:
+  #   python -m agent.run --titles "Staff Product Manager" "Director of Product"
+  # After changing them, add --rescreen once to re-check postings already seen.
   target_titles:
     - "Senior Product Manager"
     - "Principal Product Manager"
@@ -14,17 +20,23 @@ candidate:
 
 # ── What to search for ────────────────────────────────────────────────────────
 search:
+  # Extra queries beyond your titles (domain-flavoured searches).
   keywords:
     - "senior product manager AI"
     - "product manager machine learning platform"
     - "product manager developer tools"
     - "principal product manager infrastructure"
+  keywords_from_titles: true         # also search every target title as-is
+  # What the aggregators are asked for. "California" searches the whole state;
+  # "Remote" pulls remote-flagged roles. Queries × locations = calls per run,
+  # printed at the start of each run.
   locations:
-    - "Los Angeles, CA"
+    - "California"
     - "Remote"
   country: "us"                      # Adzuna country code
   max_days_old: 3                    # only postings newer than this
-  max_jobs_per_run: 40               # how many survive the title filter and get screened
+  max_jobs_per_run: 80               # how many survive the title filter and get
+                                     # screened. Free in rules mode.
   min_score_to_list: 60              # 0-100; screened postings at/above this (and with
                                      # no blocker) go in out/<date>/matches.md
   min_score_to_generate: 78          # 0-100; below this, no docs are generated
@@ -42,6 +54,14 @@ search:
   salary_unknown: keep               # keep | drop — most postings state no pay,
                                      # so "drop" will discard the majority
   trust_estimated_salary: false      # treat aggregator-modelled bands as real?
+
+# ── Location: applied to every posting from every source ──────────────────────
+location:
+  state: "CA"                        # posting must be in California…
+  allow_remote: true                 # …or remote and open to the US / California.
+                                     # false = California offices only.
+  unknown: drop                      # no location stated: drop | keep
+  extra_cities: []                   # towns the built-in California list misses
 
 # ── Screening: how each surviving posting's description is judged ─────────────
 screen:
@@ -116,14 +136,6 @@ filters:
   # ATS boards list every office worldwide. Keep only postings whose location
   # names one of search.locations (city part) or one of these. Aggregators are
   # already searched per location, so this applies to ATS boards only.
-  ats_location_filter: true
-  nearby_locations:
-    - "santa monica"
-    - "pasadena"
-    - "irvine"
-    - "culver city"
-    - "burbank"
-    - "el segundo"
   # Domain words that nudge a title up, but only once it's already a plausible
   # function match. "AI" won't rescue "Data Center Architect".
   boost_terms:

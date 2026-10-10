@@ -9,7 +9,34 @@ resume-improver Skill.
 python -m agent.run --dry-run   # free: collect, filter, rank titles, rule-screen, print URLs
 python -m agent.run             # also writes out/<date>/matches.md and builds packets
 python -m agent.run -v          # show what the title filter and screen dropped, and why
+python -m agent.run --titles "Staff Product Manager" "Director of Product"   # one-off titles
+python -m agent.run --rescreen  # re-check postings already seen (after changing titles/quals)
 ```
+
+## Changing titles and widening the search
+
+- **Titles:** edit `candidate.target_titles` (or use `configurator.html`). Any
+  job family works; a title the filter doesn't recognise ("Chief of Staff")
+  becomes its own category. With `search.keywords_from_titles: true` each title
+  is also searched for, so the search follows your titles. `--titles` does the
+  same for one run without touching `config.yaml`, and searches only those
+  titles. Run once with `--rescreen` after a change, so postings screened
+  under the old titles are looked at again.
+- **More postings:** `search.locations` is `California` + `Remote`, i.e. the
+  whole state. Each run prints queries × locations = API calls, since that
+  number is what eats a SerpApi quota.
+- **More companies:** `python check_boards.py --add figma notion …` tests each
+  token on Greenhouse, Lever and Ashby, shows how many openings are in
+  California, and adds only the ones that respond to `config.yaml`.
+
+## Location
+
+The `location:` block is checked on every posting from every source. A
+posting passes if any of its offices is in California (`state: CA`), or, with
+`allow_remote: true`, if it's remote and open to the US. "Remote – New York"
+and "Remote – UK" are dropped, and so are postings with no location
+(`unknown: drop`). Postings that name only a city are matched against a
+built-in list of California cities; add missing towns under `extra_cities`.
 
 ## 1. How it works
 
@@ -17,7 +44,7 @@ Four stages. Each is its own step — not one agent loop.
 
 | stage | what | cost |
 |---|---|---|
-| 1 collect | Adzuna, Google Jobs (SerpApi), public ATS boards, optional alert emails → hard filters (title terms, companies, salary, ATS location) → dedupe | free |
+| 1 collect | Adzuna, Google Jobs (SerpApi), public ATS boards, optional alert emails → hard filters (title terms, companies, salary, California location) → dedupe | free |
 | 2 screen | **title prefilter** (`agent/titles.py`, string matching) ranks every title and keeps the best `max_jobs_per_run`; then the **description screen** (`screen.mode`) | free (`rules`) / pennies (`haiku`) |
 | 3 research | Opus + web search on the top `max_packets_per_run` postings scoring ≥ `min_score_to_generate` | $ |
 | 4 generate | Opus runs the uploaded Skill in a code-execution container, with stage 3's notes passed in as text | $$ |
